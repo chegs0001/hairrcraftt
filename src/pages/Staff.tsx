@@ -54,7 +54,6 @@ export default function StaffPage() {
 
   const pending = staff.data?.filter((s) => s.status === 'pending') ?? []
   const rest = staff.data?.filter((s) => s.status !== 'pending') ?? []
-  const branchCode = (id: string | null) => branches.data?.find((b) => b.id === id)?.code ?? '—'
 
   return (
     <Screen title="Staff" back={back}>
@@ -72,30 +71,38 @@ export default function StaffPage() {
           ))}
         </div>
       )}
-      <div className="space-y-2">
-        {rest.map((s) => {
-          const t = currentTerms(s.id)
-          return (
-            <Card key={s.id} className={s.status === 'inactive' ? 'opacity-50' : ''}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{s.name || s.email}</div>
-                  <div className="text-sm text-gray-500">
-                    {s.role} · {branchCode(s.branch_id)} · {s.status}
-                    {t && ` · off ${DAYS[t.weekly_off_day]}`}
+      {[...(branches.data ?? []), null].map((b) => {
+        const group = rest.filter((s) => (b ? s.branch_id === b.id : !s.branch_id || !branches.data?.some((x) => x.id === s.branch_id)))
+        if (group.length === 0) return null
+        return (
+          <div key={b?.id ?? 'none'} className="space-y-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-500">
+              <span className="rounded-md bg-violet-100 px-2 py-0.5 text-violet-800">{b?.code ?? '—'}</span>{b?.name ?? 'No salon assigned'}
+            </h2>
+            {group.map((s) => {
+              const t = currentTerms(s.id)
+              return (
+                <Card key={s.id} className={s.status === 'inactive' ? 'opacity-50' : ''}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{s.name || s.email}</div>
+                      <div className="text-sm text-gray-500">
+                        {s.role} · {s.status}{t && ` · off ${DAYS[t.weekly_off_day]}`}
+                      </div>
+                    </div>
+                    <GhostButton onClick={() => setEditing(s)}>Edit</GhostButton>
                   </div>
-                </div>
-                <GhostButton onClick={() => setEditing(s)}>Edit</GhostButton>
-              </div>
-              {s.status === 'active' && (
-                <button className="mt-2 text-sm text-red-600" onClick={() => confirm(`Deactivate ${s.name || s.email}?`) && deactivate.mutate(s)}>
-                  Deactivate
-                </button>
-              )}
-            </Card>
-          )
-        })}
-      </div>
+                  {s.status === 'active' && (
+                    <button className="mt-2 text-sm text-red-600" onClick={() => confirm(`Deactivate ${s.name || s.email}?`) && deactivate.mutate(s)}>
+                      Deactivate
+                    </button>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
+        )
+      })}
       <div className="fixed inset-x-0 bottom-0 border-t bg-white p-4">
         <div className="mx-auto max-w-xl"><Button onClick={() => setAdding(true)}>Add staff by Gmail</Button></div>
       </div>
@@ -110,7 +117,7 @@ function StaffForm({ staff, branches, terms, onDone }: {
   const [name, setName] = useState(staff?.name ?? '')
   const [phone, setPhone] = useState(staff?.phone ?? '')
   const [role, setRole] = useState(staff?.role ?? 'member')
-  const [branchId, setBranchId] = useState(staff?.branch_id ?? branches[0]?.id ?? '')
+  const [branchId, setBranchId] = useState(staff?.branch_id ?? '')
   const [shiftStart, setShiftStart] = useState((staff?.shift_start ?? '11:00').slice(0, 5))
   const [shiftEnd, setShiftEnd] = useState((staff?.shift_end ?? '20:00').slice(0, 5))
   const [salary, setSalary] = useState(terms ? String(terms.monthly_salary / 100) : '')
@@ -158,6 +165,7 @@ function StaffForm({ staff, branches, terms, onDone }: {
       <label className="block text-sm">Phone
         <input className={inputCls} inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </label>
+      {!branchId && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Choose which salon this person works in. They can only see and bill for that salon.</p>}
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-sm">Role
           <select className={inputCls} value={role} onChange={(e) => setRole(e.target.value as 'manager' | 'member')}>
@@ -167,6 +175,7 @@ function StaffForm({ staff, branches, terms, onDone }: {
         </label>
         <label className="block text-sm">Home salon
           <select className={inputCls} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            <option value="" disabled>Choose salon…</option>
             {branches.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}
           </select>
         </label>

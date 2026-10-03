@@ -27,6 +27,7 @@ before(async () => {
     create schema auth;
     create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}');
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
+    create role anon;
     create role authenticated;
     grant usage on schema public, auth to authenticated;
   `)
@@ -327,5 +328,45 @@ describe('cash and day closing', () => {
     const n2 = (await sql(`select flag_unclosed_days() n`))[0].n
     assert.ok(n1 >= 1)
     assert.equal(n2, 0)
+  })
+})
+
+describe('birthday discount and optional reason', () => {
+  const mk = async (phone, bday) => {
+    await as(null)
+    const c = (await sql(`insert into clients(phone,name,birthday) values ($1,'B', ${bday}) returning id`, [phone]))[0]
+    await as('riya')
+    return c
+  }
+  test('client without a birthday is created fine; no birthday means no discount', async () => {
+    const c = await mk('4444444441', 'null')
+    const v = await newVisit('riya', c.id)
+    await addDone(v.id, ids.svc1000)
+    const b = await bill(v.id, 100000n, 0n)
+    assert.equal(Number(b.discount), 0)
+  })
+  test('20% off all services on the birthday, automatically, no reason needed', async () => {
+    const c = await mk('4444444442', `business_date() - interval '25 years'`)
+    const v = await newVisit('riya', c.id)
+    await addDone(v.id, ids.svc1000)
+    const b = await bill(v.id, 80000n, 0n)
+    assert.equal(Number(b.discount), 20000)
+    assert.equal(Number(b.total_payable), 80000)
+    assert.equal(b.discount_reason, 'Birthday 20% off')
+    assert.equal(Number(b.new_due), 0)
+  })
+  test('not on any other day', async () => {
+    const c = await mk('4444444443', `business_date() - interval '25 years 3 days'`)
+    const v = await newVisit('riya', c.id)
+    await addDone(v.id, ids.svc1000)
+    assert.equal(Number((await bill(v.id, 100000n, 0n)).discount), 0)
+  })
+  test('birthday discount does not stack with a bigger manual discount (larger one wins)', async () => {
+    const c = await mk('4444444444', `business_date() - interval '30 years'`)
+    const v = await newVisit('riya', c.id)
+    await addDone(v.id, ids.svc1000)
+    const b = await bill(v.id, 70000n, 0n, [30000n, null])      // ₹300 off, no reason given
+    assert.equal(Number(b.discount), 30000)
+    assert.equal(b.discount_reason, null)
   })
 })

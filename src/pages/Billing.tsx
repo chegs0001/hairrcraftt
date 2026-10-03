@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ActionBar, BackLink, Button, Card, inputCls, Screen, Sheet } from '../components/ui'
-import { rpc, useBranches, useCatalogue, useClientCard } from '../lib/api'
-import { rupees, toPaise } from '../lib/format'
+import { rpc, useBirthdayPct, useBranches, useCatalogue, useClientCard } from '../lib/api'
+import { isBirthdayToday, rupees, toPaise } from '../lib/format'
 import { receiptText, whatsappLink } from '../lib/receipt'
 import { supabase } from '../lib/supabase'
 import type { Bill, Visit, VisitLine } from '../lib/types'
@@ -29,6 +29,8 @@ export default function Billing() {
     queryFn: async () => Number((await supabase.from('settings').select('value').eq('key', 'prime_fee_paise').single()).data?.value ?? 0),
   })
 
+  const bdayPct = useBirthdayPct()
+  const birthdayPct = bdayPct.data ?? 20
   const [discMode, setDiscMode] = useState<'amt' | 'pct'>('amt')
   const [discIn, setDiscIn] = useState('')
   const [discReason, setDiscReason] = useState('')
@@ -44,7 +46,7 @@ export default function Billing() {
     mutationFn: async () => {
       const bill = await rpc<Bill>('close_bill', {
         p_visit: id, p_cash: toPaise(Number(cash || 0)), p_upi: toPaise(Number(upi || 0)),
-        p_discount: discount, p_discount_reason: discount > 0 ? discReason : null,
+        p_discount: manualDiscount, p_discount_reason: manualDiscount > 0 ? discReason.trim() || null : null,
         p_sell_prime: sellPrime, p_upi_ref: upiRef || null,
       })
       const l = await supabase.from('visit_lines').select('*,visit_line_staff(staff_id,share)').eq('visit_id', id!).eq('status', 'active').order('created_at')
@@ -90,7 +92,10 @@ export default function Billing() {
   }
   const services = lines.filter((l) => l.kind === 'service')
   const subtotal = services.reduce((n, l) => n + priceOf(l) * l.qty, 0)
-  const discount = Math.min(subtotal, discMode === 'pct' ? Math.round((subtotal * Number(discIn || 0)) / 100) : toPaise(Number(discIn || 0)))
+  const manualDiscount = Math.min(subtotal, discMode === 'pct' ? Math.round((subtotal * Number(discIn || 0)) / 100) : toPaise(Number(discIn || 0)))
+  const birthday = isBirthdayToday(client.birthday)
+  const birthdayDiscount = birthday ? Math.round((subtotal * birthdayPct) / 100) : 0
+  const discount = Math.max(manualDiscount, birthdayDiscount)
   const feeNow = sellPrime ? fee.data ?? 0 : 0
   const balance = card.data?.card?.balance ?? 0
   const payable = Math.max(0, subtotal - discount + feeNow + balance)
@@ -116,7 +121,8 @@ export default function Billing() {
             onChange={(e) => setDiscIn(e.target.value.replace(/\D/g, ''))} />
           <button className="min-h-12 shrink-0 rounded-xl border px-4" onClick={() => setDiscMode(discMode === 'amt' ? 'pct' : 'amt')}>{discMode === 'amt' ? '₹' : '%'}</button>
         </div>
-        {discount > 0 && <input className={inputCls} placeholder="Discount reason (required)" value={discReason} onChange={(e) => setDiscReason(e.target.value)} />}
+        {birthday && <p className="rounded-xl bg-pink-50 p-3 text-sm font-medium text-pink-700">🎂 Birthday today: {birthdayPct}% off all services is applied automatically. A bigger manual discount replaces it; they don't add up.</p>}
+        {manualDiscount > 0 && <input className={inputCls} placeholder="Discount reason (optional)" value={discReason} onChange={(e) => setDiscReason(e.target.value)} />}
         {!primeNow && (fee.data ?? 0) > 0 && (
           <label className="flex min-h-12 items-center gap-3">
             <input type="checkbox" className="size-6" checked={sellPrime} onChange={(e) => setSellPrime(e.target.checked)} />
@@ -133,7 +139,7 @@ export default function Billing() {
 
       <Card className="space-y-1 text-sm">
         <Row l="Subtotal" v={rupees(subtotal)} />
-        {discount > 0 && <Row l="Discount" v={`−${rupees(discount)}`} />}
+        {discount > 0 && <Row l={birthdayDiscount >= manualDiscount ? 'Birthday discount' : 'Discount'} v={`−${rupees(discount)}`} />}
         {feeNow > 0 && <Row l="Prime membership" v={rupees(feeNow)} />}
         {balance !== 0 && <Row l={balance > 0 ? 'Previous dues' : 'Credit applied'} v={rupees(balance)} />}
         <div className="flex justify-between border-t pt-2 text-lg font-bold"><span>Total payable</span><span>{rupees(payable)}</span></div>
@@ -158,7 +164,7 @@ export default function Billing() {
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <ActionBar>
-        <Button disabled={discount > 0 && !discReason.trim()} onClick={() => { setError(''); setConfirming(true) }}>Close bill</Button>
+        <Button onClick={() => { setError(''); setConfirming(true) }}>Close bill</Button>
       </ActionBar>
 
       <Sheet open={confirming} onClose={() => setConfirming(false)} title="Confirm bill">

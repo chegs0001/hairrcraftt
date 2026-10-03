@@ -29,6 +29,19 @@ export default function ClientPage() {
   const [adjReason, setAdjReason] = useState('')
   const [primeEnd, setPrimeEnd] = useState('')
   const [msg, setMsg] = useState('')
+  const [editName, setEditName] = useState<string | null>(null)
+  const [editBday, setEditBday] = useState<string | null>(null)
+  const saveDetails = useMutation({
+    mutationFn: async () => {
+      const patch: Record<string, unknown> = {}
+      if (editName !== null) patch.name = editName.trim()
+      if (editBday !== null) patch.birthday = editBday || null
+      const { error } = await supabase.from('clients').update(patch).eq('id', id!)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => { setEditName(null); setEditBday(null); setMsg('Details saved'); void qc.invalidateQueries({ queryKey: ['client', id] }); void qc.invalidateQueries({ queryKey: ['client-search'] }) },
+    onError: (e: Error) => setMsg(e.message),
+  })
 
   const refresh = () => { void qc.invalidateQueries({ queryKey: ['ledger', id] }); void qc.invalidateQueries({ queryKey: ['client-card'] }) }
   const collect = useMutation({
@@ -55,6 +68,16 @@ export default function ClientPage() {
   return (
     <Screen title={client.data.name} back={<BackLink to="/" />}>
       <ClientCard client={client.data} />
+      <Card className="space-y-3">
+        <div className="font-semibold">Details</div>
+        <label className="block text-sm">Name
+          <input className={inputCls} value={editName ?? client.data.name} onChange={(e) => setEditName(e.target.value)} />
+        </label>
+        <label className="block text-sm">Birthday (optional): 20% off services on this day
+          <input className={inputCls} type="date" value={editBday ?? client.data.birthday ?? ''} onChange={(e) => setEditBday(e.target.value)} />
+        </label>
+        {(editName !== null || editBday !== null) && <Button disabled={editName !== null && !editName.trim()} onClick={() => saveDetails.mutate()}>Save details</Button>}
+      </Card>
       <Card className="space-y-3">
         <div className="font-semibold">Collect dues</div>
         <div className="grid grid-cols-2 gap-3">

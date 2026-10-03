@@ -11,16 +11,13 @@ interface Summary {
   open_visits: number; closed: boolean
 }
 
-const NOTES = [500, 200, 100, 50, 20, 10] as const
-
 export default function CloseDay() {
   const qc = useQueryClient()
   const { staff, isManager } = useAuth()
   const branches = useBranches()
   const [branch, setBranch] = useState(staff?.branch_id ?? '')
-  const [counts, setCounts] = useState<Record<string, string>>({})
-  const [coins, setCoins] = useState('')
-  const [manual, setManual] = useState('')
+  const [countedIn, setCountedIn] = useState('')
+  const [verified, setVerified] = useState(false)
   const [note, setNote] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
@@ -34,15 +31,13 @@ export default function CloseDay() {
   })
   const refresh = () => qc.invalidateQueries({ queryKey: ['day-summary'] })
 
-  const noteTotal = NOTES.reduce((n, d) => n + d * Number(counts[d] || 0), 0) + Number(coins || 0)
-  const counted = manual !== '' ? Number(manual) : noteTotal
+  const counted = Number(countedIn || 0)
   const s = sum.data
   const diff = s ? toPaise(counted) - s.expected : 0
 
   const close = useMutation({
     mutationFn: () => rpc('close_day', {
       p_counted: toPaise(counted), p_note: note || null, p_branch: branch,
-      p_denominations: { ...counts, coins: coins || '0' },
     }),
     onSuccess: () => { setConfirming(false); void refresh() },
     onError: (e: Error) => { setError(e.message); setConfirming(false) },
@@ -105,19 +100,9 @@ export default function CloseDay() {
             <>
               {s.open_visits > 0 && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{s.open_visits} visit(s) still open. Bill or cancel them first.</p>}
               <Card className="space-y-2">
-                <div className="font-semibold">Count the drawer</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {NOTES.map((d) => (
-                    <label key={d} className="block text-xs text-gray-500">₹{d} notes
-                      <input className={`${inputCls} text-base`} inputMode="numeric" value={counts[d] ?? ''} onChange={(e) => setCounts({ ...counts, [d]: e.target.value.replace(/\D/g, '') })} />
-                    </label>
-                  ))}
-                  <label className="block text-xs text-gray-500">Coins (₹ total)
-                    <input className={`${inputCls} text-base`} inputMode="numeric" value={coins} onChange={(e) => setCoins(e.target.value.replace(/\D/g, ''))} />
-                  </label>
-                </div>
-                <label className="block text-sm">Counted cash (₹){manual === '' && ' — from the counter above'}
-                  <input className={`${inputCls} text-2xl`} inputMode="numeric" value={manual !== '' ? manual : String(noteTotal || '')} onChange={(e) => setManual(e.target.value.replace(/\D/g, ''))} />
+                <div className="font-semibold">Cash in the drawer</div>
+                <label className="block text-sm">Counted cash (₹)
+                  <input className={`${inputCls} text-2xl`} inputMode="numeric" value={countedIn} onChange={(e) => setCountedIn(e.target.value.replace(/\D/g, ''))} />
                 </label>
                 <div className={`text-lg font-bold ${diff === 0 ? 'text-green-700' : 'text-red-600'}`}>
                   {diff === 0 ? 'Matches' : diff < 0 ? `Short ${rupees(-diff)}` : `Extra ${rupees(diff)}`}
@@ -131,7 +116,7 @@ export default function CloseDay() {
       {error && <p className="text-sm text-red-600">{error}</p>}
       {s && !s.closed && (
         <ActionBar>
-          <Button disabled={s.open_visits > 0 || (diff !== 0 && !note.trim())} onClick={() => { setError(''); setConfirming(true) }}>Close day</Button>
+          <Button disabled={countedIn === '' || s.open_visits > 0 || (diff !== 0 && !note.trim())} onClick={() => { setError(''); setVerified(false); setConfirming(true) }}>Close day</Button>
         </ActionBar>
       )}
       <Sheet open={confirming} onClose={() => setConfirming(false)} title="Close the day?">
@@ -141,7 +126,11 @@ export default function CloseDay() {
           <div className={diff === 0 ? 'text-green-700' : 'font-semibold text-red-600'}>{diff === 0 ? 'Matches the system' : diff < 0 ? `Short ${rupees(-diff)}` : `Extra ${rupees(diff)}`}</div>
           <p className="pt-2 text-sm text-gray-500">No more bills, expenses or advances can be added to today after closing.</p>
         </div>
-        <Button className="mt-5" disabled={close.isPending} onClick={() => close.mutate()}>Confirm and close day</Button>
+        <label className="mt-4 flex items-start gap-3 text-sm">
+          <input type="checkbox" className="mt-0.5 size-6 shrink-0" checked={verified} onChange={(e) => setVerified(e.target.checked)} />
+          I have counted the cash in the drawer and {rupees(toPaise(counted))} is correct.
+        </label>
+        <Button className="mt-5" disabled={close.isPending || !verified} onClick={() => close.mutate()}>Confirm and close day</Button>
       </Sheet>
     </Screen>
   )

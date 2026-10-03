@@ -67,10 +67,11 @@ export default function NewVisit() {
                 <option value="">—</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
               </select>
             </label>
-            <label className="block text-sm">Birthday
+            <label className="block text-sm">Birthday (optional)
               <input className={inputCls} type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
             </label>
           </div>
+          <p className="text-xs text-violet-700">🎂 Clients get 20% off all services on their birthday. Ask for it if they're happy to share.</p>
           <label className="block text-sm">Notes
             <input className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>

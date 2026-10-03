@@ -18,6 +18,7 @@ const FIELDS: { key: string; label: string; paise?: boolean }[] = [
   { key: 'geofence_default_m', label: 'Default geo-fence radius (m)' },
   { key: 'geofence_max_accuracy_m', label: 'Worst GPS accuracy allowed (m)' },
   { key: 'prime_fee_paise', label: 'Prime membership fee (₹)', paise: true },
+  { key: 'birthday_discount_pct', label: 'Birthday discount on services (%)' },
   { key: 'prime_validity_days', label: 'Prime validity (days)' },
   { key: 'selfie_retention_days', label: 'Selfie retention (days)' },
 ]

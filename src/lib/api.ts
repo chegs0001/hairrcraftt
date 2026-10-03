@@ -55,3 +55,11 @@ export const useClientCard = (client?: Client | null) =>
       return { card: card[0], history }
     },
   })
+
+export const useBirthdayPct = () =>
+  useQuery({
+    queryKey: ['birthday-pct'],
+    staleTime: 5 * 60_000,
+    queryFn: async () =>
+      Number((await supabase.from('settings').select('value').eq('key', 'birthday_discount_pct').maybeSingle()).data?.value ?? 20),
+  })

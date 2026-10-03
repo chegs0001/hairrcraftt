@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
-import { useClientCard } from '../lib/api'
-import { rupees, shortDate } from '../lib/format'
+import { useBirthdayPct, useClientCard } from '../lib/api'
+import { isBirthdayToday, rupees, shortDate } from '../lib/format'
 import type { Client } from '../lib/types'
 import { Card } from './ui'
 
@@ -9,6 +9,7 @@ const daysUntil = (d: string) =>
 
 export default function ClientCard({ client, link }: { client: Client; link?: boolean }) {
   const { data } = useClientCard(client)
+  const bdayPct = useBirthdayPct().data ?? 20
   const prime = data?.card?.prime_until
   const balance = data?.card?.balance ?? 0
   const left = prime ? daysUntil(prime) : null
@@ -29,6 +30,7 @@ export default function ClientCard({ client, link }: { client: Client; link?: bo
         ) : (
           <span className="rounded-full bg-gray-100 px-3 py-1 text-gray-600">Not Prime</span>
         )}
+        {isBirthdayToday(client.birthday) && <span className="rounded-full bg-pink-100 px-3 py-1 font-medium text-pink-700">🎂 Birthday today · {bdayPct}% off</span>}
         {balance > 0 && <span className="rounded-full bg-red-100 px-3 py-1 font-medium text-red-700">Due {rupees(balance)}</span>}
         {balance < 0 && <span className="rounded-full bg-green-100 px-3 py-1 font-medium text-green-700">Credit {rupees(-balance)}</span>}
       </div>
