@@ -9,6 +9,7 @@ export default function More() {
     <Screen title="More">
       <Card>
         <Link className={link} to="/attendance/me">My attendance</Link>
+        <Link className={link} to="/payslips">My payslips</Link>
         <Link className={link} to="/clients">Clients</Link>
         <Link className={link} to="/expense">Expenses</Link>
         <Link className={link} to="/advance">Salary advance</Link>
@@ -18,6 +19,7 @@ export default function More() {
         <Card>
           <div className="font-semibold">Manager</div>
           <Link className={link} to="/dashboard">Dashboard</Link>
+          <Link className={link} to="/payroll">Payroll</Link>
           <Link className={link} to="/flags">Flags</Link>
           <Link className={link} to="/reports">Reports</Link>
           <Link className={link} to="/attendance">Attendance (all staff)</Link>

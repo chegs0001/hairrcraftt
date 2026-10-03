@@ -104,3 +104,12 @@ export interface Bill {
   paid: number
   new_due: number
 }
+
+export interface PayrollLine {
+  id: string; run_id: string; staff_id: string; salary: number; expected_days_full: number; expected_days: number
+  day_rate: number; present_days: number; absent_days: number; half_days: number; extra_days: number; leave_days: number
+  short_minutes: number; absent_deduction: number; extra_pay: number; short_deduction: number; base_pay: number
+  credit: number; salon_sales: number; target: number; incentive: number; advances: number; carry_in: number
+  net_pay: number; carry_out: number; paid_at: string | null; paid_mode: 'cash' | 'upi' | null
+}
+export interface PayrollRun { id: string; branch_id: string; month: string; status: 'draft' | 'final' }

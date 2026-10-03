@@ -6,6 +6,9 @@ import MyAttendance from './pages/MyAttendance'
 import Dashboard from './pages/Dashboard'
 import Flags from './pages/Flags'
 import Reports from './pages/Reports'
+import Payroll from './pages/Payroll'
+import Payslip from './pages/Payslip'
+import Payslips from './pages/Payslips'
 import Billing from './pages/Billing'
 import Layout from './components/Layout'
 import Advance from './pages/Advance'
@@ -55,6 +58,9 @@ export default function App() {
       <Route path="/dashboard" element={<ManagerOnly><Dashboard /></ManagerOnly>} />
       <Route path="/flags" element={<ManagerOnly><Flags /></ManagerOnly>} />
       <Route path="/reports" element={<ManagerOnly><Reports /></ManagerOnly>} />
+      <Route path="/payroll" element={<ManagerOnly><Payroll /></ManagerOnly>} />
+      <Route path="/payslips" element={<Payslips />} />
+      <Route path="/payslip/:id" element={<Payslip />} />
       <Route path="/more" element={<More />} />
       <Route path="/services" element={<ManagerOnly><ServicesAdmin /></ManagerOnly>} />
       <Route path="/staff" element={<ManagerOnly><StaffPage /></ManagerOnly>} />

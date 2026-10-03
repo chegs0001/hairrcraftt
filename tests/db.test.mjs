@@ -554,3 +554,65 @@ describe('dashboard, incentive and reports', () => {
     assert.match(f.note, /Checked with staff/)
   })
 })
+
+describe('payroll', () => {
+  const math = async (a) => (await sql(`select * from payroll_math($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, a))[0]
+  test('PRD 7.4 payslip: ₹12,000, 27 days, 2 absent, 1 extra, 90 min short, ₹600 incentive, ₹2,000 advance = ₹10,081', async () => {
+    await as(null)
+    const r = await math([1200000, 27, 27, 2, 0, 1, 90, 60000, 200000, 0])
+    assert.equal(Number(r.day_rate), 44444)
+    assert.equal(Number(r.absent_deduction), 88889)
+    assert.equal(Number(r.extra_pay), 44444)
+    assert.equal(Number(r.short_deduction), 7407)
+    assert.equal(Number(r.net_pay), 1008100)
+    assert.equal(Number(r.carry_out), 0)
+  })
+  test('advances bigger than pay give ₹0 and carry the rest forward', async () => {
+    await as(null)
+    const r = await math([1000000, 26, 26, 0, 0, 0, 0, 0, 1500000, 0])
+    assert.equal(Number(r.net_pay), 0)
+    assert.equal(Number(r.carry_out), 500000)
+  })
+  test('carry-in from last month is deducted; half days and a new joiner are pro-rated', async () => {
+    await as(null)
+    let r = await math([1000000, 26, 26, 0, 2, 0, 0, 0, 0, 100000])   // 2 half days = 1 day off
+    assert.equal(Number(r.net_pay), 1000000 - Math.round(1000000 / 26) - 100000 > 0 ? Math.round((1000000 - 1000000 / 26 - 100000) / 100) * 100 : 0)
+    r = await math([1000000, 26, 13, 0, 0, 0, 0, 0, 0, 0])            // joined mid-month: half the working days
+    assert.equal(Number(r.base_pay), 500000)
+  })
+
+  test('run, review, finalise and lock a real month; payslip is private and carry-forward works', async () => {
+    await as('mgr')
+    const month = (await sql(`select to_char(date_trunc('month', business_date()),'YYYY-MM-DD') m`))[0].m
+    const hc4 = (await sql(`select id from branches where code='HC4'`))[0].id
+    const run = (await sql(`select * from run_payroll($1,$2)`, [hc4, month]))[0]
+    assert.equal(run.status, 'draft')
+    const lines = await sql(`select l.*, s.name from payroll_lines l join staff s on s.id=l.staff_id where run_id=$1`, [run.id])
+    const eve = lines.find((l) => l.name === 'eve')
+    assert.equal(Number(eve.credit), 4000000)
+    assert.equal(Number(eve.salon_sales), 28000000)
+    assert.equal(Number(eve.incentive), 50000)                       // gate met, ₹500
+    // re-running a draft refreshes rather than duplicating
+    await sql(`select * from run_payroll($1,$2)`, [hc4, month])
+    assert.equal((await sql(`select count(*)::int c from payroll_lines where run_id=$1`, [run.id]))[0].c, lines.length)
+    // payslip hidden until final
+    await as('eve')
+    assert.equal((await sql(`select count(*)::int c from payroll_lines`))[0].c, 0)
+    await as('mgr')
+    await fails(() => sql(`select mark_payslip_paid($1,'cash')`, [eve.id]), /Finalise/)
+    await sql(`select * from finalize_payroll($1)`, [run.id])
+    await fails(() => sql(`select * from run_payroll($1,$2)`, [hc4, month]), /final and locked/)
+    await as(null)
+    await fails(() => sql(`update payroll_lines set net_pay = 1 where id=$1`, [eve.id]), /locked/)
+    await as('mgr')
+    const paid = (await sql(`select * from mark_payslip_paid($1,'upi')`, [eve.id]))[0]
+    assert.equal(paid.paid_mode, 'upi')
+    await as('eve')
+    const mine = await sql(`select * from payroll_lines`)
+    assert.equal(mine.length, 1)                                      // own payslip only
+    assert.equal(mine[0].staff_id, ids.s_eve)
+    assert.equal((await sql(`select count(*)::int c from payroll_runs`))[0].c, 1)        // can see the month of their own payslip
+    await as('fay')
+    assert.equal((await sql(`select count(*)::int c from payroll_lines where staff_id <> $1`, [ids.s_fay]))[0].c, 0)
+  })
+})
