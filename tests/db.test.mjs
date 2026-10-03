@@ -470,3 +470,87 @@ describe('attendance', () => {
     assert.equal((await sql(`select count(*)::int c from attendance where staff_id <> $1`, [ids.s_riya]))[0].c, 0)
   })
 })
+
+describe('dashboard, incentive and reports', () => {
+  let hc4, svcA, svcB
+  before(async () => {
+    await as(null)
+    hc4 = (await sql(`insert into branches(name,code) values ('Test 4','HC4') returning id`))[0].id
+    await signup('eve', 'eve@gmail.com'); await signup('fay', 'fay@gmail.com')
+    await db.query(`update staff set status='active', branch_id=$1, name=split_part(email,'@',1) where email in ('eve@gmail.com','fay@gmail.com')`, [hc4])
+    ids.s_eve = (await sql(`select id from staff where email='eve@gmail.com'`))[0].id
+    ids.s_fay = (await sql(`select id from staff where email='fay@gmail.com'`))[0].id
+    await sql(`insert into staff_terms(staff_id,monthly_salary,weekly_off_day,effective_from) values ($1,1000000,1,'2026-01-01'),($2,1000000,1,'2026-01-01')`, [ids.s_eve, ids.s_fay])
+    const cat = (await sql(`select id from service_categories limit 1`))[0].id
+    svcA = (await sql(`insert into services(category_id,name,standard_price) values ($1,'Bridal 40k',4000000) returning id`, [cat]))[0].id
+    svcB = (await sql(`insert into services(category_id,name,standard_price) values ($1,'Big 2.4L',24000000) returning id`, [cat]))[0].id
+    // Eve credits ₹40,000, Fay ₹2,40,000 => salon HC4 net sales ₹2,80,000 (PRD 7.4 example)
+    for (const [who, svc, price, phone] of [['eve', svcA, 4000000n, '3333333331'], ['fay', svcB, 24000000n, '3333333332']]) {
+      await as(null)
+      const c = (await sql(`insert into clients(phone,name) values ($1,$2) returning id`, [phone, who])).at(0)
+      await as(who)
+      const v = await newVisit(who, c.id)
+      await addDone(v.id, svc)
+      await bill(v.id, price, 0n)
+    }
+  })
+
+  test('PRD 7.4: salary ₹10,000, credit ₹40,000, salon sales ₹2,80,000 gives ₹500 incentive; below the gate gives ₹0', async () => {
+    await as('mgr')
+    const m = (await sql(`select dashboard_month($1, null) j`, [hc4]))[0].j
+    const b = m.branches[0]
+    assert.equal(Number(b.net_sales), 28000000)
+    const eve = b.staff.find((s) => s.name === 'eve')
+    assert.equal(Number(eve.credit), 4000000)
+    assert.equal(Number(eve.target), 3000000)
+    assert.equal(Number(eve.incentive), 50000)             // ₹500
+    await as(null)
+    await sql(`update settings set value='30000000' where key='incentive_gate_paise'`)     // gate ₹3,00,000: sales ₹2,80,000 is below
+    await as('mgr')
+    const m2 = (await sql(`select dashboard_month($1, null) j`, [hc4]))[0].j
+    assert.equal(Number(m2.branches[0].staff.find((s) => s.name === 'eve').incentive), 0)
+    await as(null)
+    await sql(`update settings set value='25000000' where key='incentive_gate_paise'`)
+  })
+
+  test("today's dashboard is per salon and sums to both", async () => {
+    await as('mgr')
+    const one = (await sql(`select dashboard_today($1,null) j`, [hc4]))[0].j
+    assert.equal(Number(one.services), 28000000)
+    assert.equal(Number(one.bills), 2)
+    assert.equal(Number(one.clients_new), 2)
+    assert.equal(Number(one.cash), 28000000)
+    const hc1 = (await sql(`select dashboard_today($1,null) j`, [ids.HC1]))[0].j
+    const both = (await sql(`select dashboard_today(null,null) j`))[0].j
+    assert.ok(Number(hc1.services) < Number(both.services))
+    assert.ok(Number(both.services) >= Number(hc1.services) + 28000000)
+    const eveRow = one.staff.find((s) => s.name === 'eve')
+    assert.equal(Number(eveRow.credit), 4000000)
+    assert.equal(Number(eveRow.services), 1)
+  })
+
+  test('only managers see the dashboard and reports', async () => {
+    await as('riya')
+    await fails(() => sql(`select dashboard_today(null,null)`), /Managers only/)
+    await fails(() => sql(`select * from report('sales', null, null, null)`), /Managers only/)
+  })
+
+  test('every report runs and returns rows where data exists', async () => {
+    await as('mgr')
+    for (const name of ['sales', 'staff_performance', 'discounts', 'dues', 'prime', 'expenses', 'cash_closings', 'attendance', 'audit']) {
+      const rows = await sql(`select * from report($1, business_date()-40, business_date(), null)`, [name])
+      assert.ok(Array.isArray(rows), name)
+      if (['sales', 'staff_performance', 'audit', 'cash_closings', 'discounts'].includes(name)) assert.ok(rows.length > 0, name)
+    }
+    await fails(() => sql(`select * from report('nope', null, null, null)`), /Unknown report/)
+  })
+
+  test('manager can mark a flag seen with a note', async () => {
+    await as('mgr')
+    const id = (await sql(`select id from flags order by created_at limit 1`))[0].id
+    await sql(`select see_flag($1, 'Checked with staff')`, [id])
+    const f = (await sql(`select seen_at, note from flags where id=$1`, [id]))[0]
+    assert.ok(f.seen_at)
+    assert.match(f.note, /Checked with staff/)
+  })
+})

@@ -17,6 +17,9 @@ export default function More() {
       {isManager && (
         <Card>
           <div className="font-semibold">Manager</div>
+          <Link className={link} to="/dashboard">Dashboard</Link>
+          <Link className={link} to="/flags">Flags</Link>
+          <Link className={link} to="/reports">Reports</Link>
           <Link className={link} to="/attendance">Attendance (all staff)</Link>
           <Link className={link} to="/services">Services and prices</Link>
           <Link className={link} to="/staff">Staff</Link>
