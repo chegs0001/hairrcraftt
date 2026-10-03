@@ -24,6 +24,9 @@ export default function More() {
           <Link className={link} to="/reports">Reports</Link>
           <Link className={link} to="/attendance">Attendance (all staff)</Link>
           <Link className={link} to="/services">Services and prices</Link>
+          <Link className={link} to="/products">Products</Link>
+          <Link className={link} to="/stock">Stock</Link>
+          <Link className={link} to="/bills">Bills (void)</Link>
           <Link className={link} to="/staff">Staff</Link>
           <Link className={link} to="/salons">Salons</Link>
           <Link className={link} to="/settings">Settings</Link>

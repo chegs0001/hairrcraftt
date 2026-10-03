@@ -114,3 +114,9 @@ export interface PayrollLine {
   net_pay: number; carry_out: number; makeup_days: number; void: boolean; window_end: string | null; paid_at: string | null; paid_mode: 'cash' | 'upi' | null
 }
 export interface PayrollRun { id: string; branch_id: string; month: string; status: 'draft' | 'final'; kind: 'monthly' | 'exit'; staff_id: string | null }
+
+export interface Product {
+  id: string; name: string; sku: string | null; selling_price: number; prime_price: number | null
+  low_stock_at: number; active: boolean
+}
+export interface StockRow { branch_id: string; product_id: string; name: string; sku: string | null; qty: number; low_at: number; low: boolean }

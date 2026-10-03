@@ -63,3 +63,16 @@ export const useBirthdayPct = () =>
     queryFn: async () =>
       Number((await supabase.from('settings').select('value').eq('key', 'birthday_discount_pct').maybeSingle()).data?.value ?? 20),
   })
+
+export const useProducts = () =>
+  useQuery({
+    queryKey: ['products'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => (await supabase.from('products').select('*').order('name')).data as import('./types').Product[],
+  })
+
+export const useStock = (branch: string | null) =>
+  useQuery({
+    queryKey: ['stock', branch],
+    queryFn: () => rpc<import('./types').StockRow[]>('stock_levels', { p_branch: branch }),
+  })

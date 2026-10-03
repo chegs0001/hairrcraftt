@@ -679,3 +679,121 @@ describe('exit settlement, joining date and make-up days', () => {
     for (const r of rows) assert.ok(Number(r.makeup_days) >= 0)
   })
 })
+
+describe('products, stock and voiding bills', () => {
+  let prod, svc1000b
+  const addProduct = (visit, qty = 1, price = null, reason = null) =>
+    sql(`select * from add_product_line($1,$2,$3,$4,$5)`, [visit, prod, qty, price, reason]).then((r) => r[0])
+  const stockOf = async (branch) =>
+    Number((await sql(`select qty from stock_levels($1) where product_id=$2`, [branch, prod]))[0].qty)
+  const mkClient = async (phone, bday = 'null') => {
+    await as(null)
+    const c = (await sql(`insert into clients(phone,name,birthday) values ($1,'P', ${bday}) returning id`, [phone]))[0]
+    return c
+  }
+
+  before(async () => {
+    await as(null)
+    prod = (await sql(`insert into products(name,sku,selling_price,prime_price,low_stock_at) values ('Shampoo','SH1',50000,40000,2) returning id`))[0].id
+    const cat = (await sql(`select id from service_categories limit 1`))[0].id
+    svc1000b = (await sql(`insert into services(category_id,name,standard_price) values ($1,'Svc 1000',100000) returning id`, [cat]))[0].id
+    await as('mgr')
+    await sql(`select add_stock($1,$2,5,'purchase','Opening stock')`, [ids.HC1, prod])
+  })
+
+  test('product-only sale closes a bill and reduces that salon stock only', async () => {
+    const c = await mkClient('2222222221')
+    await as('riya')
+    const v = await newVisit('riya', c.id)
+    await addProduct(v.id, 2)
+    const b = await bill(v.id, 100000n, 0n)
+    assert.equal(Number(b.subtotal), 100000)
+    assert.equal(await stockOf(ids.HC1), 3)
+    await as('mgr')
+    assert.equal(await stockOf(ids.HC2), 0)
+  })
+
+  test('selling more than on hand is allowed but flagged', async () => {
+    const c = await mkClient('2222222222')
+    await as('riya')
+    const v = await newVisit('riya', c.id)
+    await addProduct(v.id, 4)
+    await bill(v.id, 200000n, 0n)
+    assert.equal(await stockOf(ids.HC1), -1)
+    await as(null)
+    assert.equal((await sql(`select count(*)::int c from flags where type='stock_negative'`))[0].c, 1)
+  })
+
+  test('product price below list is flagged; prime price applies to products too', async () => {
+    const c = await mkClient('2222222223')
+    await as('riya')
+    const v = await newVisit('riya', c.id)
+    await fails(() => addProduct(v.id, 1, 30000), /reason/)
+    const l = await addProduct(v.id, 1, 30000, 'Damaged pack')
+    assert.equal(l.flagged, true)
+    assert.equal(l.kind, 'product')
+    const b = await bill(v.id, 30000n, 0n)
+    assert.equal(Number(b.new_due), 0)
+  })
+
+  test('birthday discount applies to services only, not products', async () => {
+    const c = await mkClient('2222222224', `business_date() - interval '28 years'`)
+    await as('riya')
+    const v = await newVisit('riya', c.id)
+    await addDone(v.id, svc1000b)
+    await addProduct(v.id, 1)
+    const b = await bill(v.id, 130000n, 0n)       // 1000 + 500 - 20% of 1000
+    assert.equal(Number(b.subtotal), 150000)
+    assert.equal(Number(b.discount), 20000)
+    assert.equal(Number(b.total_payable), 130000)
+  })
+
+  test('stock levels, low-stock flag, purchase, adjustment (reason + flag) and transfer', async () => {
+    await as('mgr')
+    await sql(`select add_stock($1,$2,10,'purchase',null)`, [ids.HC1, prod])
+    const lv = (await sql(`select * from stock_levels($1) where product_id=$2`, [ids.HC1, prod]))[0]
+    assert.equal(lv.low, false)
+    await fails(() => sql(`select add_stock($1,$2,-1,'adjustment',null)`, [ids.HC1, prod]), /reason/)
+    await sql(`select add_stock($1,$2,-1,'adjustment','Broken bottle')`, [ids.HC1, prod])
+    await sql(`select transfer_stock($1,$2,$3,3,'Restock HC2')`, [ids.HC1, ids.HC2, prod])
+    assert.equal(await stockOf(ids.HC2), 3)
+    await fails(() => sql(`select transfer_stock($1,$2,$3,999,null)`, [ids.HC2, ids.HC1, prod]), /Only/)
+    await as('riya')
+    await fails(() => sql(`select add_stock($1,$2,1,'purchase',null)`, [ids.HC1, prod]), /Managers only/)
+    assert.equal((await sql(`select count(*)::int c from stock_levels(null)`))[0].c, 1)     // staff see only their own salon
+  })
+
+  test('voiding a bill: manager only, reason needed, restores stock, reverses the due, refunds cash, keeps the number', async () => {
+    const c = await mkClient('2222222225')
+    await as('riya')
+    const v = await newVisit('riya', c.id)
+    await addProduct(v.id, 2)
+    const b = await bill(v.id, 60000n, 0n)                                      // ₹1,000 bill, ₹600 paid, ₹400 due
+    const before = await stockOf(ids.HC1)
+    assert.equal(Number((await sql(`select client_balance($1) b`, [c.id]))[0].b), 40000)
+    await fails(() => sql(`select void_bill($1,'x')`, [b.id]), /Managers only/)
+    await as('mgr')
+    await fails(() => sql(`select void_bill($1,'')`, [b.id]), /reason/)
+    const voided = (await sql(`select * from void_bill($1,'Wrong client')`, [b.id]))[0]
+    assert.equal(voided.status, 'void')
+    assert.equal(voided.bill_no, b.bill_no)
+    assert.equal(await stockOf(ids.HC1), before + 2)
+    assert.equal(Number((await sql(`select client_balance($1) b`, [c.id]))[0].b), 0)
+    await fails(() => sql(`select void_bill($1,'again')`, [b.id]), /already void/)
+    // the refund reduces expected cash for the day
+    const sm = (await sql(`select * from day_summary($1,null)`, [ids.HC1]))[0]
+    const refunds = Number((await sql(`select coalesce(sum(amount),0) a from payments where branch_id=$1 and kind='refund' and business_date=business_date()`, [ids.HC1]))[0].a)
+    assert.equal(refunds, 60000)
+    assert.ok(Number(sm.cash_bills) >= 0)
+    await as(null)
+    assert.equal((await sql(`select count(*)::int c from flags where type='bill_voided'`))[0].c, 1)
+    assert.ok((await sql(`select count(*)::int c from audit_log where table_name='bills' and action='UPDATE' and reason is null and after->>'status'='void'`))[0].c >= 1)
+  })
+
+  test('voided bills drop out of the dashboard sales', async () => {
+    await as('mgr')
+    const before = (await sql(`select dashboard_today($1,null) j`, [ids.HC1]))[0].j
+    assert.ok(Number(before.products) > 0)
+    assert.ok(Number(before.net_sales) >= Number(before.products))
+  })
+})

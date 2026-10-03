@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import AddProduct from '../components/AddProduct'
 import AddService from '../components/AddService'
 import ClientCard from '../components/ClientCard'
 import { ActionBar, BackLink, Button, Card, GhostButton, inputCls, Screen, Sheet } from '../components/ui'
@@ -19,6 +20,7 @@ export default function VisitDetail() {
   const { staff, isManager } = useAuth()
   const team = useTeam()
   const [adding, setAdding] = useState(false)
+  const [addingProduct, setAddingProduct] = useState(false)
   const [helperFor, setHelperFor] = useState<VisitLine | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState('')
@@ -43,13 +45,14 @@ export default function VisitDetail() {
   if (!data) return <Screen title="Visit" back={<BackLink to="/visits" />}>{null}</Screen>
   const { visit, lines } = data
   const services = lines.filter((l) => l.kind === 'service')
-  const allDone = services.length > 0 && services.every((l) => l.done_at)
+  const items = lines.filter((l) => l.kind !== 'membership')
+  const allDone = items.length > 0 && services.every((l) => l.done_at)
   const open = visit.status === 'open'
   const nameOf = (sid: string) => team.data?.find((t) => t.id === sid)?.name || 'Staff'
 
   // group lines under the first staff member credited on them
   const groups = new Map<string, VisitLine[]>()
-  for (const l of services) {
+  for (const l of items) {
     const k = l.visit_line_staff[0]?.staff_id ?? 'none'
     groups.set(k, [...(groups.get(k) ?? []), l])
   }
@@ -68,11 +71,11 @@ export default function VisitDetail() {
             return (
               <Card key={l.id} className={l.done_at ? 'border-green-300 bg-green-50' : ''}>
                 <div className="flex items-start gap-3">
-                  <button disabled={!open || !onLine || run.isPending} aria-label="Mark completed"
+                  {l.kind === 'product' ? <div className="mt-0.5 flex size-12 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xl" aria-label="Product">🧴</div> : <button disabled={!open || !onLine || run.isPending} aria-label="Mark completed"
                     onClick={() => run.mutate(() => rpc('set_line_done', { p_line: l.id, p_done: !l.done_at }))}
                     className={`mt-0.5 flex size-12 shrink-0 items-center justify-center rounded-xl border-2 text-2xl ${l.done_at ? 'border-green-600 bg-green-600 text-white' : 'border-gray-300'}`}>
                     {l.done_at ? '✓' : ''}
-                  </button>
+                  </button>}
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">{l.name}{l.qty > 1 && ` ×${l.qty}`}</div>
                     <div className="text-sm text-gray-600">
@@ -94,23 +97,28 @@ export default function VisitDetail() {
           })}
         </div>
       ))}
-      {services.length === 0 && <p className="text-gray-500">No services yet.</p>}
+      {items.length === 0 && <p className="text-gray-500">No services or products yet.</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {open && (
         <>
-          <GhostButton className="w-full" onClick={() => setAdding(true)}>+ Add service</GhostButton>
+          <div className="flex gap-2">
+            <GhostButton className="flex-1" onClick={() => setAdding(true)}>+ Add service</GhostButton>
+            <GhostButton className="flex-1" onClick={() => setAddingProduct(true)}>+ Add product</GhostButton>
+          </div>
           <button className="py-3 text-sm text-red-600" onClick={() => setCancelling(true)}>Cancel visit</button>
           <ActionBar>
             <Link to={allDone ? `/visit/${visit.id}/bill` : '#'} aria-disabled={!allDone}
               className={`flex min-h-12 w-full items-center justify-center rounded-xl font-semibold text-white ${allDone ? 'bg-violet-600' : 'bg-gray-300'}`}>
-              {allDone ? 'Go to billing' : 'Tick every service as done to bill'}
+              {allDone ? 'Go to billing' : items.length === 0 ? 'Add a service or product to bill' : 'Tick every service as done to bill'}
             </Link>
           </ActionBar>
         </>
       )}
 
       <AddService open={adding} onClose={() => setAdding(false)} visitId={visit.id} clientId={visit.client_id} isPrime={!!card.data?.card?.prime_until} />
+
+      <AddProduct open={addingProduct} onClose={() => setAddingProduct(false)} visitId={visit.id} branchId={visit.branch_id} isPrime={!!card.data?.card?.prime_until} />
 
       <HelperSheet line={helperFor} onClose={() => setHelperFor(null)}
         team={(team.data ?? []).filter((t) => t.branch_id === visit.branch_id)}

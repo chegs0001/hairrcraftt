@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ActionBar, BackLink, Button, Card, inputCls, Screen, Sheet } from '../components/ui'
-import { rpc, useBirthdayPct, useBranches, useCatalogue, useClientCard } from '../lib/api'
+import { rpc, useBirthdayPct, useBranches, useCatalogue, useClientCard, useProducts } from '../lib/api'
 import { isBirthdayToday, rupees, toPaise } from '../lib/format'
 import { receiptText, whatsappLink } from '../lib/receipt'
 import { supabase } from '../lib/supabase'
@@ -12,6 +12,7 @@ export default function Billing() {
   const { id } = useParams()
   const qc = useQueryClient()
   const cat = useCatalogue()
+  const products = useProducts()
   const branches = useBranches()
 
   const { data } = useQuery({
@@ -64,7 +65,7 @@ export default function Billing() {
     const salon = branches.data?.find((b) => b.id === visit.branch_id)?.name ?? 'HairrCraftt'
     const text = receiptText({
       salon, billNo: done.bill.bill_no, date: new Date().toISOString(),
-      lines: done.lines.filter((l) => l.kind === 'service').map((l) => ({ name: l.name, qty: l.qty, total: l.net_price ?? l.price * l.qty })),
+      lines: done.lines.filter((l) => l.kind !== 'membership').map((l) => ({ name: l.name, qty: l.qty, total: l.net_price ?? l.price * l.qty })),
       discount: done.bill.discount, membershipFee: done.bill.membership_fee, previousDue: done.bill.previous_due,
       paid: done.bill.paid, balanceDue: done.bill.new_due,
     })
@@ -86,15 +87,17 @@ export default function Billing() {
   // Preview only. The server recalculates every number when the bill is closed.
   const primeNow = !!card.data?.card?.prime_until
   const priceOf = (l: VisitLine) => {
-    const svc = cat.data?.services.find((s) => s.id === l.item_id)
-    const repriced = sellPrime && svc?.prime_price != null && l.price === l.list_price && svc.prime_price < l.list_price
-    return repriced ? svc!.prime_price! : l.price
+    const item = l.kind === 'product' ? products.data?.find((p) => p.id === l.item_id) : cat.data?.services.find((s) => s.id === l.item_id)
+    const repriced = sellPrime && item?.prime_price != null && l.price === l.list_price && item.prime_price < l.list_price
+    return repriced ? item!.prime_price! : l.price
   }
   const services = lines.filter((l) => l.kind === 'service')
-  const subtotal = services.reduce((n, l) => n + priceOf(l) * l.qty, 0)
+  const billable = lines.filter((l) => l.kind !== 'membership')
+  const subtotal = billable.reduce((n, l) => n + priceOf(l) * l.qty, 0)
+  const serviceTotal = services.reduce((n, l) => n + priceOf(l) * l.qty, 0)
   const manualDiscount = Math.min(subtotal, discMode === 'pct' ? Math.round((subtotal * Number(discIn || 0)) / 100) : toPaise(Number(discIn || 0)))
   const birthday = isBirthdayToday(client.birthday)
-  const birthdayDiscount = birthday ? Math.round((subtotal * birthdayPct) / 100) : 0
+  const birthdayDiscount = birthday ? Math.round((serviceTotal * birthdayPct) / 100) : 0
   const discount = Math.max(manualDiscount, birthdayDiscount)
   const feeNow = sellPrime ? fee.data ?? 0 : 0
   const balance = card.data?.card?.balance ?? 0
@@ -107,7 +110,7 @@ export default function Billing() {
       <Card>
         <div className="font-semibold">{client.name}</div>
         <div className="mt-2 space-y-1 text-sm">
-          {services.map((l) => (
+          {billable.map((l) => (
             <div key={l.id} className="flex justify-between">
               <span>{l.name}{l.qty > 1 && ` ×${l.qty}`}{l.flagged && ' ⚑'}</span><span>{rupees(priceOf(l) * l.qty)}</span>
             </div>
@@ -121,7 +124,7 @@ export default function Billing() {
             onChange={(e) => setDiscIn(e.target.value.replace(/\D/g, ''))} />
           <button className="min-h-12 shrink-0 rounded-xl border px-4" onClick={() => setDiscMode(discMode === 'amt' ? 'pct' : 'amt')}>{discMode === 'amt' ? '₹' : '%'}</button>
         </div>
-        {birthday && <p className="rounded-xl bg-pink-50 p-3 text-sm font-medium text-pink-700">🎂 Birthday today: {birthdayPct}% off all services is applied automatically. A bigger manual discount replaces it; they don't add up.</p>}
+        {birthday && <p className="rounded-xl bg-pink-50 p-3 text-sm font-medium text-pink-700">🎂 Birthday today: {birthdayPct}% off all services is applied automatically. It applies to services only. A bigger manual discount replaces it; they don't add up.</p>}
         {manualDiscount > 0 && <input className={inputCls} placeholder="Discount reason (optional)" value={discReason} onChange={(e) => setDiscReason(e.target.value)} />}
         {!primeNow && (fee.data ?? 0) > 0 && (
           <label className="flex min-h-12 items-center gap-3">

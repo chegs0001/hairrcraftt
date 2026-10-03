@@ -9,6 +9,9 @@ import Reports from './pages/Reports'
 import Payroll from './pages/Payroll'
 import Payslip from './pages/Payslip'
 import Payslips from './pages/Payslips'
+import Bills from './pages/Bills'
+import Products from './pages/Products'
+import Stock from './pages/Stock'
 import Billing from './pages/Billing'
 import Layout from './components/Layout'
 import Advance from './pages/Advance'
@@ -61,6 +64,9 @@ export default function App() {
       <Route path="/payroll" element={<ManagerOnly><Payroll /></ManagerOnly>} />
       <Route path="/payslips" element={<Payslips />} />
       <Route path="/payslip/:id" element={<Payslip />} />
+      <Route path="/products" element={<ManagerOnly><Products /></ManagerOnly>} />
+      <Route path="/stock" element={<ManagerOnly><Stock /></ManagerOnly>} />
+      <Route path="/bills" element={<ManagerOnly><Bills /></ManagerOnly>} />
       <Route path="/more" element={<More />} />
       <Route path="/services" element={<ManagerOnly><ServicesAdmin /></ManagerOnly>} />
       <Route path="/staff" element={<ManagerOnly><StaffPage /></ManagerOnly>} />
