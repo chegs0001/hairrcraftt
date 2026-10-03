@@ -370,3 +370,103 @@ describe('birthday discount and optional reason', () => {
     assert.equal(b.discount_reason, null)
   })
 })
+
+describe('attendance', () => {
+  const LAT = 19.076, LNG = 72.8777
+  const north = (m) => LAT + m / 111320
+  const checkIn = (lat, acc = 20, photo = 'x/in.jpg') => sql(`select * from check_in($1,$2,$3,$4)`, [lat, LNG, acc, photo])
+  const status = async (inMin, workedMin, date) => {
+    await as(null)
+    const r = await sql(
+      `select * from attendance_status($1, $2::date, ($2::date + time '11:00') at time zone 'Asia/Kolkata',
+                                        ($2::date + time '11:00') at time zone 'Asia/Kolkata' + make_interval(mins => $3))`,
+      [ids.s_riya, date, workedMin])
+    return [r[0].status, r[0].short_minutes]
+  }
+  let offDate, workDate
+
+  before(async () => {
+    await as(null)
+    await db.query(`update branches set lat=$1, lng=$2, geofence_radius_m=100 where code='HC1'`, [LAT, LNG])
+    offDate = (await sql(`select to_char(date '2026-09-07','YYYY-MM-DD') d`))[0].d   // a Monday
+    workDate = '2026-09-08'
+    await sql(`insert into staff_terms(staff_id,monthly_salary,weekly_off_day,effective_from) values ($1,1200000,1,'2026-01-01')`, [ids.s_riya])
+    await signup('dee', 'dee@gmail.com')
+    await db.query(`update staff set status='active', branch_id=$1, name='Dee', joined_on=business_date()-30 where email='dee@gmail.com'`, [ids.HC1])
+    ids.s_dee = (await sql(`select id from staff where email='dee@gmail.com'`))[0].id
+  })
+
+  test('check-in 300 m away is rejected; inside 100 m with a selfie succeeds; only once a day', async () => {
+    await as('riya')
+    await fails(() => checkIn(north(300)), /Move closer/)
+    await fails(() => checkIn(north(20), 400), /accurate/)
+    await fails(() => checkIn(north(20), 20, ''), /selfie/)
+    const a = (await checkIn(north(20)))[0]
+    assert.equal(a.status, 'open')
+    await fails(() => checkIn(north(20)), /already checked in/)
+  })
+
+  test('check-out inside the fence closes the record', async () => {
+    await as('riya')
+    await fails(() => sql(`select * from check_out($1,$2,$3,$4)`, [north(500), LNG, 20, 'x/out.jpg']), /Move closer/)
+    const a = (await sql(`select * from check_out($1,$2,$3,$4)`, [north(10), LNG, 20, 'x/out.jpg']))[0]
+    assert.ok(a.out_at)
+    assert.equal(a.status, 'absent')     // checked out seconds after checking in
+  })
+
+  test('daily status rules (9 h required, 15 min grace, half-day, extra day)', async () => {
+    assert.deepEqual(await status(0, 540, workDate), ['present', 0])
+    assert.deepEqual(await status(0, 530, workDate), ['present', 0])        // 10 min short, inside grace
+    assert.deepEqual(await status(0, 480, workDate), ['present_short', 45]) // 60 short - 15 grace
+    assert.deepEqual(await status(0, 270, workDate), ['present_short', 255])
+    assert.deepEqual(await status(0, 200, workDate), ['half_day', 0])
+    assert.deepEqual(await status(0, 100, workDate), ['absent', 0])
+    assert.deepEqual(await status(0, 300, offDate), ['extra_day', 0])       // worked on weekly off
+    assert.deepEqual(await status(0, 150, offDate), ['extra_half', 0])
+    assert.deepEqual(await status(0, 60, offDate), ['off', 0])
+  })
+
+  test('grid shows present, off, holiday, leave and absent days', async () => {
+    await as(null)
+    await sql(`insert into staff_terms(staff_id,monthly_salary,weekly_off_day,effective_from)
+               values ($1,1000000, extract(dow from (business_date()-8))::int, '2026-01-01')`, [ids.s_dee])
+    await sql(`insert into holidays(branch_id,date,name) values ($1, business_date()-7, 'Diwali')`, [ids.HC1])
+    await sql(`insert into leaves(staff_id,date) values ($1, business_date()-6)`, [ids.s_dee])
+    await as('mgr')
+    await sql(`select correct_attendance($1, business_date()-9, '11:00', '20:00', 'Forgot to check in')`, [ids.s_dee])
+    const rows = await sql(`select to_char(date,'YYYY-MM-DD') d, status from attendance_grid(business_date()-9, business_date()-5, null, $1) order by date`, [ids.s_dee])
+    assert.deepEqual(rows.map((r) => r.status), ['present', 'off', 'holiday', 'leave', 'absent'])
+  })
+
+  test('only managers correct attendance, with a reason; correction is flagged', async () => {
+    await as('riya')
+    await fails(() => sql(`select correct_attendance($1, business_date()-2, '11:00','20:00','x')`, [ids.s_riya]), /Managers only/)
+    await as('mgr')
+    await fails(() => sql(`select correct_attendance($1, business_date()-2, '11:00','20:00','')`, [ids.s_dee]), /reason/)
+    const a = (await sql(`select * from correct_attendance($1, business_date()-2, '11:00','19:00','Phone died')`, [ids.s_dee]))[0]
+    assert.equal(a.status, 'present_short')           // 8 h = 60 min short, 45 beyond grace
+    assert.equal(a.short_minutes, 45)
+    await as(null)
+    assert.ok((await sql(`select count(*)::int c from flags where type='attendance_corrected'`))[0].c >= 2)
+  })
+
+  test('nightly job auto-closes open records at shift end and flags them', async () => {
+    await as('mgr')
+    await sql(`select correct_attendance($1, business_date()-3, '11:05', null, 'Left open')`, [ids.s_dee])
+    await as(null)
+    const n = (await sql(`select auto_close_attendance() n`))[0].n
+    assert.ok(n >= 1)
+    const [a] = await sql(`select auto_closed, status, to_char(out_at at time zone 'Asia/Kolkata','HH24:MI') t from attendance where staff_id=$1 and date=business_date()-3`, [ids.s_dee])
+    assert.equal(a.auto_closed, true)
+    assert.equal(a.t, '20:00')
+    assert.equal(a.status, 'present')                 // 11:05 to 20:00 = 8h55, inside grace
+    assert.ok((await sql(`select count(*)::int c from flags where type='auto_closed_checkout'`))[0].c >= 1)
+  })
+
+  test("staff see only their own attendance", async () => {
+    await as('aman')
+    assert.equal((await sql(`select count(*)::int c from attendance`))[0].c, 0)
+    await as('riya')
+    assert.equal((await sql(`select count(*)::int c from attendance where staff_id <> $1`, [ids.s_riya]))[0].c, 0)
+  })
+})

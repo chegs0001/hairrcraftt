@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './lib/auth'
+import Attendance from './pages/Attendance'
+import MyAttendance from './pages/MyAttendance'
 import Billing from './pages/Billing'
 import Layout from './components/Layout'
 import Advance from './pages/Advance'
@@ -45,6 +47,8 @@ export default function App() {
       <Route path="/expense" element={<Expense />} />
       <Route path="/advance" element={<Advance />} />
       <Route path="/close-day" element={<CloseDay />} />
+      <Route path="/attendance/me" element={<MyAttendance />} />
+      <Route path="/attendance" element={<ManagerOnly><Attendance /></ManagerOnly>} />
       <Route path="/more" element={<More />} />
       <Route path="/services" element={<ManagerOnly><ServicesAdmin /></ManagerOnly>} />
       <Route path="/staff" element={<ManagerOnly><StaffPage /></ManagerOnly>} />

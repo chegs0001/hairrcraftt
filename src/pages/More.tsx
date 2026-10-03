@@ -8,6 +8,7 @@ export default function More() {
   return (
     <Screen title="More">
       <Card>
+        <Link className={link} to="/attendance/me">My attendance</Link>
         <Link className={link} to="/clients">Clients</Link>
         <Link className={link} to="/expense">Expenses</Link>
         <Link className={link} to="/advance">Salary advance</Link>
@@ -16,6 +17,7 @@ export default function More() {
       {isManager && (
         <Card>
           <div className="font-semibold">Manager</div>
+          <Link className={link} to="/attendance">Attendance (all staff)</Link>
           <Link className={link} to="/services">Services and prices</Link>
           <Link className={link} to="/staff">Staff</Link>
           <Link className={link} to="/salons">Salons</Link>

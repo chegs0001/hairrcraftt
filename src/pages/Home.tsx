@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import CheckInCard from '../components/CheckInCard'
 import { Card, Screen } from '../components/ui'
 import { useBranches } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -19,9 +20,9 @@ export default function Home() {
         <div className="text-lg font-semibold">{staff?.name || staff?.email}</div>
         {salon && <div className="mt-1 inline-block rounded-md bg-violet-100 px-2 py-0.5 text-sm font-medium text-violet-800">{salon.code} · {salon.name}</div>}
       </Card>
+      <CheckInCard />
       <Link to="/visit/new" className="flex min-h-16 w-full items-center justify-center rounded-2xl bg-violet-600 text-lg font-bold text-white">New visit</Link>
       <Link to="/visits"><Card className="flex items-center justify-between"><span>Open visits</span><span className="text-xl font-bold">{open.data ?? '…'}</span></Card></Link>
-      <p className="text-sm text-gray-500">Attendance, cash and the dashboard arrive in the next phases.</p>
     </Screen>
   )
 }
