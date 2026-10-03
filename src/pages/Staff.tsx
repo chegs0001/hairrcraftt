@@ -1,0 +1,198 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Button, Card, GhostButton, inputCls, Screen } from '../components/ui'
+import { DAYS, toPaise } from '../lib/format'
+import { supabase } from '../lib/supabase'
+import type { Branch, Staff, StaffTerms } from '../lib/types'
+
+const back = <Link to="/more" className="px-2 py-2 text-xl">‹</Link>
+
+export default function StaffPage() {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState<Staff | null>(null)
+  const [adding, setAdding] = useState(false)
+
+  const staff = useQuery({
+    queryKey: ['staff'],
+    queryFn: async () => (await supabase.from('staff').select('*').order('created_at')).data as Staff[],
+  })
+  const branches = useQuery({
+    queryKey: ['branches'],
+    queryFn: async () => (await supabase.from('branches').select('*').order('code')).data as Branch[],
+  })
+  const terms = useQuery({
+    queryKey: ['terms'],
+    queryFn: async () =>
+      (await supabase.from('staff_terms').select('*').order('effective_from', { ascending: false })).data as StaffTerms[],
+  })
+  const currentTerms = (id: string) => terms.data?.find((t) => t.staff_id === id)
+
+  const deactivate = useMutation({
+    mutationFn: async (s: Staff) => {
+      const { error } = await supabase.from('staff').update({ status: 'inactive' }).eq('id', s.id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }),
+  })
+
+  if (editing || adding) {
+    return (
+      <StaffForm
+        staff={editing}
+        branches={branches.data ?? []}
+        terms={editing ? currentTerms(editing.id) : undefined}
+        onDone={() => {
+          setEditing(null)
+          setAdding(false)
+          void qc.invalidateQueries({ queryKey: ['staff'] })
+          void qc.invalidateQueries({ queryKey: ['terms'] })
+        }}
+      />
+    )
+  }
+
+  const pending = staff.data?.filter((s) => s.status === 'pending') ?? []
+  const rest = staff.data?.filter((s) => s.status !== 'pending') ?? []
+  const branchCode = (id: string | null) => branches.data?.find((b) => b.id === id)?.code ?? '—'
+
+  return (
+    <Screen title="Staff" back={back}>
+      {pending.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="font-semibold text-amber-700">Waiting for approval</h2>
+          {pending.map((s) => (
+            <Card key={s.id} className="flex items-center justify-between gap-2 border-amber-300">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{s.name || s.email}</div>
+                <div className="truncate text-sm text-gray-500">{s.email}</div>
+              </div>
+              <GhostButton onClick={() => setEditing(s)}>Review</GhostButton>
+            </Card>
+          ))}
+        </div>
+      )}
+      <div className="space-y-2">
+        {rest.map((s) => {
+          const t = currentTerms(s.id)
+          return (
+            <Card key={s.id} className={s.status === 'inactive' ? 'opacity-50' : ''}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{s.name || s.email}</div>
+                  <div className="text-sm text-gray-500">
+                    {s.role} · {branchCode(s.branch_id)} · {s.status}
+                    {t && ` · off ${DAYS[t.weekly_off_day]}`}
+                  </div>
+                </div>
+                <GhostButton onClick={() => setEditing(s)}>Edit</GhostButton>
+              </div>
+              {s.status === 'active' && (
+                <button className="mt-2 text-sm text-red-600" onClick={() => confirm(`Deactivate ${s.name || s.email}?`) && deactivate.mutate(s)}>
+                  Deactivate
+                </button>
+              )}
+            </Card>
+          )
+        })}
+      </div>
+      <div className="fixed inset-x-0 bottom-0 border-t bg-white p-4">
+        <div className="mx-auto max-w-xl"><Button onClick={() => setAdding(true)}>Add staff by Gmail</Button></div>
+      </div>
+    </Screen>
+  )
+}
+
+function StaffForm({ staff, branches, terms, onDone }: {
+  staff: Staff | null; branches: Branch[]; terms?: StaffTerms; onDone: () => void
+}) {
+  const [email, setEmail] = useState(staff?.email ?? '')
+  const [name, setName] = useState(staff?.name ?? '')
+  const [phone, setPhone] = useState(staff?.phone ?? '')
+  const [role, setRole] = useState(staff?.role ?? 'member')
+  const [branchId, setBranchId] = useState(staff?.branch_id ?? branches[0]?.id ?? '')
+  const [shiftStart, setShiftStart] = useState((staff?.shift_start ?? '11:00').slice(0, 5))
+  const [shiftEnd, setShiftEnd] = useState((staff?.shift_end ?? '20:00').slice(0, 5))
+  const [salary, setSalary] = useState(terms ? String(terms.monthly_salary / 100) : '')
+  const [offDay, setOffDay] = useState(terms?.weekly_off_day ?? 1)
+  const [error, setError] = useState('')
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const row = {
+        email: email.trim().toLowerCase(), name: name.trim(), phone: phone.trim() || null,
+        role, branch_id: branchId || null, shift_start: shiftStart, shift_end: shiftEnd,
+        status: 'active' as const,
+      }
+      let id = staff?.id
+      if (staff) {
+        const { error } = await supabase.from('staff').update(row).eq('id', staff.id)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.from('staff').insert(row).select('id').single()
+        if (error) throw error
+        id = data.id
+      }
+      const paise = toPaise(Number(salary || 0))
+      const changed = !terms || terms.monthly_salary !== paise || terms.weekly_off_day !== offDay
+      if (changed && id) {
+        const { error } = await supabase.from('staff_terms').upsert(
+          { staff_id: id, monthly_salary: paise, weekly_off_day: offDay,
+            effective_from: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) },
+          { onConflict: 'staff_id,effective_from' })
+        if (error) throw error
+      }
+    },
+    onSuccess: onDone,
+    onError: (e: Error) => setError(e.message),
+  })
+
+  return (
+    <Screen title={staff ? 'Edit staff' : 'Add staff'} back={<button className="px-2 py-2 text-xl" onClick={onDone}>‹</button>}>
+      <label className="block text-sm">Gmail
+        <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!!staff} />
+      </label>
+      <label className="block text-sm">Name
+        <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label className="block text-sm">Phone
+        <input className={inputCls} inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-sm">Role
+          <select className={inputCls} value={role} onChange={(e) => setRole(e.target.value as 'manager' | 'member')}>
+            <option value="member">Team member</option>
+            <option value="manager">Manager</option>
+          </select>
+        </label>
+        <label className="block text-sm">Home salon
+          <select className={inputCls} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm">Shift start
+          <input className={inputCls} type="time" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
+        </label>
+        <label className="block text-sm">Shift end
+          <input className={inputCls} type="time" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
+        </label>
+        <label className="block text-sm">Monthly salary (₹)
+          <input className={inputCls} inputMode="numeric" value={salary} onChange={(e) => setSalary(e.target.value.replace(/\D/g, ''))} />
+        </label>
+        <label className="block text-sm">Weekly off
+          <select className={inputCls} value={offDay} onChange={(e) => setOffDay(Number(e.target.value))}>
+            {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+          </select>
+        </label>
+      </div>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="fixed inset-x-0 bottom-0 border-t bg-white p-4">
+        <div className="mx-auto max-w-xl">
+          <Button disabled={save.isPending || !email || !branchId} onClick={() => save.mutate()}>
+            {staff?.status === 'pending' ? 'Approve' : 'Save'}
+          </Button>
+        </div>
+      </div>
+    </Screen>
+  )
+}

@@ -1,0 +1,21 @@
+name: Nightly database backup
+on:
+  schedule:
+    - cron: '30 20 * * *' # 02:00 IST
+  workflow_dispatch:
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Postgres client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges -Fc -f backup.dump
+      - name: Upload as artifact (keep 30 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hairrcraftt-backup-${{ github.run_id }}
+          path: backup.dump
+          retention-days: 30
