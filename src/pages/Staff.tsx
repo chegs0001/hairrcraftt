@@ -87,7 +87,7 @@ export default function StaffPage() {
                     <div className="min-w-0">
                       <div className="truncate font-medium">{s.name || s.email}</div>
                       <div className="text-sm text-gray-500">
-                        {s.role} · {s.status}{t && ` · off ${DAYS[t.weekly_off_day]}`}
+                        {s.role} · {s.status}{t && ` · off ${DAYS[t.weekly_off_day]}`}{s.last_working_on && ` · last day ${s.last_working_on}`}
                       </div>
                     </div>
                     <GhostButton onClick={() => setEditing(s)}>Edit</GhostButton>
@@ -122,6 +122,8 @@ function StaffForm({ staff, branches, terms, onDone }: {
   const [shiftEnd, setShiftEnd] = useState((staff?.shift_end ?? '20:00').slice(0, 5))
   const [salary, setSalary] = useState(terms ? String(terms.monthly_salary / 100) : '')
   const [offDay, setOffDay] = useState(terms?.weekly_off_day ?? 1)
+  const [joinedOn, setJoinedOn] = useState(staff?.joined_on ?? '')
+  const [lastOn, setLastOn] = useState(staff?.last_working_on ?? '')
   const [error, setError] = useState('')
 
   const save = useMutation({
@@ -130,6 +132,8 @@ function StaffForm({ staff, branches, terms, onDone }: {
         email: email.trim().toLowerCase(), name: name.trim(), phone: phone.trim() || null,
         role, branch_id: branchId || null, shift_start: shiftStart, shift_end: shiftEnd,
         status: 'active' as const,
+        ...(joinedOn ? { joined_on: joinedOn } : {}),
+        last_working_on: lastOn || null,
       }
       let id = staff?.id
       if (staff) {
@@ -194,6 +198,14 @@ function StaffForm({ staff, branches, terms, onDone }: {
           </select>
         </label>
       </div>
+      <label className="block text-sm">Joining date: pay starts from this day
+        <input className={inputCls} type="date" value={joinedOn} onChange={(e) => setJoinedOn(e.target.value)} />
+        <span className="text-xs text-gray-500">You can move it later, but only to a date after the last month already paid.</span>
+      </label>
+      <label className="block text-sm">Last working date (optional)
+        <input className={inputCls} type="date" value={lastOn} onChange={(e) => setLastOn(e.target.value)} />
+        <span className="text-xs text-gray-500">After this date they can no longer sign in. Settle their remaining pay from Payroll, whenever you like.</span>
+      </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="fixed inset-x-0 bottom-0 border-t bg-white p-4">
         <div className="mx-auto max-w-xl">

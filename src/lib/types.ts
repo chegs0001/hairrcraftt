@@ -23,6 +23,7 @@ export interface Staff {
   shift_start: string
   shift_end: string
   joined_on: string
+  last_working_on: string | null
 }
 
 export interface StaffTerms {
@@ -110,6 +111,6 @@ export interface PayrollLine {
   day_rate: number; present_days: number; absent_days: number; half_days: number; extra_days: number; leave_days: number
   short_minutes: number; absent_deduction: number; extra_pay: number; short_deduction: number; base_pay: number
   credit: number; salon_sales: number; target: number; incentive: number; advances: number; carry_in: number
-  net_pay: number; carry_out: number; paid_at: string | null; paid_mode: 'cash' | 'upi' | null
+  net_pay: number; carry_out: number; makeup_days: number; void: boolean; window_end: string | null; paid_at: string | null; paid_mode: 'cash' | 'upi' | null
 }
-export interface PayrollRun { id: string; branch_id: string; month: string; status: 'draft' | 'final' }
+export interface PayrollRun { id: string; branch_id: string; month: string; status: 'draft' | 'final'; kind: 'monthly' | 'exit'; staff_id: string | null }

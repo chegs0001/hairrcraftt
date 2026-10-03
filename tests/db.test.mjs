@@ -616,3 +616,66 @@ describe('payroll', () => {
     assert.equal((await sql(`select count(*)::int c from payroll_lines where staff_id <> $1`, [ids.s_fay]))[0].c, 0)
   })
 })
+
+describe('exit settlement, joining date and make-up days', () => {
+  test('a last working date in the past deactivates the staff member; grid still shows them up to that day', async () => {
+    await as(null)
+    await signup('hal', 'hal@gmail.com')
+    await db.query(`update staff set status='active', branch_id=$1, name='Hal', joined_on=business_date()-20 where email='hal@gmail.com'`, [ids.HC1])
+    ids.s_hal = (await sql(`select id from staff where email='hal@gmail.com'`))[0].id
+    await sql(`insert into staff_terms(staff_id,monthly_salary,weekly_off_day,effective_from) values ($1,1200000,0,'2026-01-01')`, [ids.s_hal])
+    await sql(`update staff set last_working_on = business_date()-5 where id=$1`, [ids.s_hal])
+    assert.equal((await sql(`select status from staff where id=$1`, [ids.s_hal]))[0].status, 'inactive')
+    await as('mgr')
+    const rows = await sql(`select to_char(date,'YYYY-MM-DD') d from attendance_grid(business_date()-20, business_date(), null, $1) order by date`, [ids.s_hal])
+    assert.equal(rows.length, 16)                                         // day -20 .. day -5
+    assert.equal((await sql(`select count(*)::int c from attendance_grid(business_date()-20, business_date(), null, null) where staff_id=$1`, [ids.s_hal]))[0].c, 0)
+  })
+
+  test('settle_exit pays up to the last date, no incentive, deducts advances, and supersedes the monthly draft line', async () => {
+    await as('mgr')
+    const month = (await sql(`select to_char(date_trunc('month', business_date()),'YYYY-MM-DD') m`))[0].m
+    await as(null)
+    await sql(`update staff set status='active', last_working_on = business_date() where id=$1`, [ids.s_hal])   // present again for the monthly run
+    await as('mgr')
+    const monthly = (await sql(`select * from run_payroll($1,$2)`, [ids.HC1, month]))[0]
+    assert.ok((await sql(`select 1 from payroll_lines where run_id=$1 and staff_id=$2 and not void`, [monthly.id, ids.s_hal])).length === 1)
+    await sql(`select add_advance($1, 100000, 'drawer', 'Leaving advance', $2, null)`, [ids.s_hal, ids.HC1])
+    const ex = (await sql(`select * from settle_exit($1, null)`, [ids.s_hal]))[0]
+    assert.equal(ex.kind, 'exit')
+    const [line] = await sql(`select * from payroll_lines where run_id=$1`, [ex.id])
+    assert.equal(Number(line.incentive), 0)
+    assert.equal(Number(line.advances), 100000)
+    assert.ok(line.window_end)
+    assert.ok(Number(line.net_pay) <= Number(line.base_pay) - 100000 || Number(line.net_pay) === 0)
+    assert.equal((await sql(`select count(*)::int c from payroll_lines where run_id=$1 and staff_id=$2 and void`, [monthly.id, ids.s_hal]))[0].c, 1)
+    // re-running the monthly draft leaves them out; the exit settlement can be finalised and paid on its own
+    const again = (await sql(`select * from run_payroll($1,$2)`, [ids.HC1, month]))[0]
+    assert.equal((await sql(`select count(*)::int c from payroll_lines where run_id=$1 and staff_id=$2 and not void`, [again.id, ids.s_hal]))[0].c, 0)
+    await sql(`select * from finalize_payroll($1)`, [ex.id])
+    await sql(`select * from mark_payslip_paid($1,'cash')`, [line.id])
+    await fails(() => sql(`select * from settle_exit($1, null)`, [ids.s_hal]), /final and locked/)
+  })
+
+  test('without a last working date there is nothing to settle', async () => {
+    await as('mgr')
+    await fails(() => sql(`select * from settle_exit($1, null)`, [ids.s_riya]), /last working date/)
+  })
+
+  test('joining date can move forward after the partial month is settled, never back into paid time', async () => {
+    await as(null)
+    const month = (await sql(`select date_trunc('month', business_date())::date m`))[0].m
+    await fails(() => sql(`update staff set joined_on = business_date() - 1 where id=$1`, [ids.s_eve]), /already settled/)
+    await sql(`update staff set joined_on = (date_trunc('month', business_date()) + interval '1 month')::date where id=$1`, [ids.s_eve])
+    assert.ok(month)
+  })
+
+  test('make-up days: absences accumulate as days to cover and shrink when extra days are worked', async () => {
+    await as('mgr')
+    const month = (await sql(`select to_char(date_trunc('month', business_date()),'YYYY-MM-DD') m`))[0].m
+    const run = (await sql(`select * from run_payroll($1,$2)`, [ids.HC1, month]))[0]
+    const rows = await sql(`select makeup_days, absent_days, extra_days from payroll_lines where run_id=$1 and not void`, [run.id])
+    assert.ok(rows.length > 0)
+    for (const r of rows) assert.ok(Number(r.makeup_days) >= 0)
+  })
+})

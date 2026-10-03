@@ -31,6 +31,7 @@ export default function Payslip() {
     ['Incentive', `+ ${rupees(l.incentive)}`],
     ['Advances this month', `− ${rupees(l.advances)}`],
     ['Advance carried from last month', `− ${rupees(l.carry_in)}`],
+    ...(l.makeup_days > 0 ? ([['Absence days still to cover', `${l.makeup_days}`]] as [string, string][]) : []),
   ]
 
   // Draw the payslip to a canvas so it can be shared as an image (WhatsApp etc.)
