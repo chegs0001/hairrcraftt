@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { rpc, useCatalogue } from '../lib/api'
 import { rupees, shortDate, toPaise } from '../lib/format'
+import { fuzzyFilter } from '../lib/search'
 import { supabase } from '../lib/supabase'
 import type { Service } from '../lib/types'
 import { useAuth } from '../lib/auth'
@@ -31,27 +32,33 @@ export default function AddService({ open, onClose, visitId, clientId, isPrime }
     onSuccess: () => qc.invalidateQueries({ queryKey: ['favourites'] }),
   })
 
+  const catName = (id: string) => cat.data?.categories.find((c) => c.id === id)?.name ?? ''
+  const searching = q.trim().length > 0
+  // While typing: one list ranked by how well each service matches (typos allowed). Otherwise grouped by category.
+  const ranked = useMemo(
+    () => fuzzyFilter((cat.data?.services ?? []).filter((s) => s.active), q, (s) => [s.name, catName(s.category_id), s.price_hint ?? '']).slice(0, 40),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cat.data, q])
   const grouped = useMemo(() => {
-    const term = q.trim().toLowerCase()
-    const services = (cat.data?.services ?? []).filter((s) => s.active && (!term || s.name.toLowerCase().includes(term)))
+    const services = (cat.data?.services ?? []).filter((s) => s.active)
     return (cat.data?.categories ?? [])
       .map((c) => ({ c, items: services.filter((s) => s.category_id === c.id) }))
       .filter((g) => g.items.length)
-  }, [cat.data, q])
+  }, [cat.data])
   const favServices = (cat.data?.services ?? []).filter((s) => s.active && favs.data?.includes(s.id))
 
   const close = () => { setPicked(null); setQ(''); onClose() }
 
   return (
-    <Sheet open={open} onClose={close} title={picked ? picked.name : 'Add service'}>
+    <Sheet open={open} onClose={close} title={picked ? picked.name : 'Add service'} full={!picked}>
       {picked ? (
         <PricePanel service={picked} visitId={visitId} clientId={clientId} isPrime={isPrime}
           onBack={() => setPicked(null)}
           onAdded={() => { void qc.invalidateQueries({ queryKey: ['visit', visitId] }); close() }} />
       ) : (
         <div className="space-y-4">
-          <input className={inputCls} placeholder="Search services" value={q} onChange={(e) => setQ(e.target.value)} />
-          {!q && favServices.length > 0 && (
+          <input className={inputCls} placeholder="Search services" autoComplete="off" autoCorrect="off" value={q} onChange={(e) => setQ(e.target.value)} />
+          {!searching && favServices.length > 0 && (
             <div>
               <div className="mb-2 text-sm font-semibold text-gray-500">Favourites</div>
               <div className="flex flex-wrap gap-2">
@@ -61,7 +68,17 @@ export default function AddService({ open, onClose, visitId, clientId, isPrime }
               </div>
             </div>
           )}
-          {grouped.map(({ c, items }) => (
+          {searching && ranked.length === 0 && <p className="py-6 text-center text-sm text-gray-500">No service matches "{q.trim()}". Check the spelling, or ask a manager to add it.</p>}
+          {searching && ranked.map((s) => (
+            <div key={s.id} className="flex items-center border-b">
+              <button className="flex min-h-14 flex-1 items-center justify-between gap-2 py-2 text-left" onClick={() => setPicked(s)}>
+                <span className="min-w-0"><span className="block truncate">{s.name}</span><span className="block truncate text-xs text-gray-500">{catName(s.category_id)}</span></span>
+                <span className="shrink-0 text-sm text-gray-500">{s.standard_price !== null ? rupees(isPrime && s.prime_price !== null ? s.prime_price : s.standard_price) : s.price_hint ?? 'Open price'}</span>
+              </button>
+              <button className="px-3 py-3 text-xl" aria-label="Favourite" onClick={() => toggleFav.mutate(s)}>{favs.data?.includes(s.id) ? '★' : '☆'}</button>
+            </div>
+          ))}
+          {!searching && grouped.map(({ c, items }) => (
             <div key={c.id}>
               <div className="mb-1 text-sm font-semibold text-gray-500">{c.name}{c.gender !== 'both' && ` · ${c.gender}`}</div>
               {items.map((s) => (

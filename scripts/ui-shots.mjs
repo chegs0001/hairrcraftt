@@ -25,6 +25,12 @@ const user = { id: ids.admin, aud: 'authenticated', role: 'authenticated', email
 const session = { access_token: 'mock', token_type: 'bearer', expires_in: 86400, expires_at: Math.floor(Date.now() / 1000) + 86400, refresh_token: 'mock', user }
 await ctx.addInitScript(([s, on]) => { if (on) localStorage.setItem('sb-mock-auth-token', JSON.stringify(s)); localStorage.setItem('install-prompt-dismissed', '1') }, [session, true])
 
+await ctx.addInitScript(() => {
+  const vv = new EventTarget(); Object.assign(vv, { width: innerWidth, height: innerHeight, offsetTop: 0, offsetLeft: 0, scale: 1 })
+  Object.defineProperty(window, 'visualViewport', { value: vv, configurable: true })
+  window.__keyboard = (px) => { vv.height = innerHeight - px; vv.dispatchEvent(new Event('resize')) }
+})
+
 const filterRows = (rows, params) => {
   let r = rows
   for (const [k, v] of params) {
@@ -84,6 +90,9 @@ await shot('04-visit-new-newclient', '/visit/new', type('input', '9000000099'))
 await shot('05-visits', '/visits')
 await full('06-visit-detail', `/visit/${ids.visit}`)
 await shot('07-add-service', `/visit/${ids.visit}`, async (p) => { await p.getByText('+ Add service').click() })
+await shot('07b-search-typo-keyboard', `/visit/${ids.visit}`, async (p) => { await p.getByText('+ Add service').click(); await p.getByPlaceholder('Search services').fill('cleanap'); await p.evaluate(() => window.__keyboard(336)) })
+await shot('07c-search-nomatch-keyboard', `/visit/${ids.visit}`, async (p) => { await p.getByText('+ Add service').click(); await p.getByPlaceholder('Search services').fill('qqzx'); await p.evaluate(() => window.__keyboard(336)) })
+await shot('07d-new-visit-keyboard', '/visit/new', async (p) => { await p.locator('input').first().fill('9000000099'); await p.evaluate(() => window.__keyboard(336)) })
 await full('08-billing', `/visit/${ids.visit}/bill`)
 await full('09-client', `/client/${ids.meera}`)
 await shot('10-more', '/more')

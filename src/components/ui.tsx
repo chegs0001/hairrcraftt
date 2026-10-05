@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { useKeyboardInset } from '../lib/viewport'
 
 export function Button({ className = '', ...p }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
@@ -38,25 +39,31 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
 export const inputCls = 'min-h-12 w-full rounded-xl border border-gray-300 px-3 text-base'
 
 export function ActionBar({ children }: { children: ReactNode }) {
+  const inset = useKeyboardInset()      // lifts above the on-screen keyboard
   return (
-    <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgba(16,24,40,0.05)]">
+    <div style={{ bottom: inset }}
+      className={`fixed inset-x-0 z-10 border-t bg-white p-4 shadow-[0_-6px_16px_rgba(16,24,40,0.05)] ${inset ? '' : 'pb-[calc(1rem+env(safe-area-inset-bottom))]'}`}>
       <div className="mx-auto flex max-w-xl gap-2">{children}</div>
     </div>
   )
 }
 
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+// full: a steady-height sheet for search lists, so it does not jump as results shrink.
+export function Sheet({ open, onClose, title, children, full }: { open: boolean; onClose: () => void; title: string; children: ReactNode; full?: boolean }) {
+  const inset = useKeyboardInset()
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={onClose}>
-      <div className="mx-auto max-h-[90%] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-200" />
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="truncate text-lg font-bold tracking-tight">{title}</h2>
-          <button className="-mr-2 rounded-full px-3 py-2 text-sm font-medium text-gray-500 active:bg-gray-100" onClick={onClose}>Close</button>
+    <div className="fixed inset-0 z-30 bg-black/40" onClick={onClose}>
+      <div className="absolute inset-x-0 top-0 flex items-end" style={{ bottom: inset }}>
+        <div className={`mx-auto w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white p-5 ${full ? 'h-[92%]' : 'max-h-[92%]'} ${inset ? '' : 'pb-[calc(1.25rem+env(safe-area-inset-bottom))]'}`}
+          onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-200" />
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="truncate text-lg font-bold tracking-tight">{title}</h2>
+            <button className="-mr-2 rounded-full px-3 py-2 text-sm font-medium text-gray-500 active:bg-gray-100" onClick={onClose}>Close</button>
+          </div>
+          {children}
         </div>
-        {children}
       </div>
     </div>
   )

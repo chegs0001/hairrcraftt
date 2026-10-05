@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { BackLink, Button, Card, GhostButton, inputCls, Screen, Sheet } from '../components/ui'
 import { useCatalogue } from '../lib/api'
 import { rupees, toPaise } from '../lib/format'
+import { fuzzyFilter } from '../lib/search'
 import { parseServiceRows, TEMPLATE_CSV, type Gender } from '../lib/serviceImport'
 import { supabase } from '../lib/supabase'
 import type { Category, Service } from '../lib/types'
@@ -16,7 +17,7 @@ export default function ServicesAdmin() {
   const [editing, setEditing] = useState<Service | 'new' | null>(null)
   const [importing, setImporting] = useState(false)
   const [showHidden, setShowHidden] = useState(true)
-  const term = q.trim().toLowerCase()
+  const matches = useMemo(() => new Set(fuzzyFilter(data?.services ?? [], q, (s) => [s.name, s.price_hint ?? '']).map((s) => s.id)), [data, q])
 
   return (
     <Screen title="Services and prices" back={<BackLink to="/more" />}>
@@ -28,7 +29,7 @@ export default function ServicesAdmin() {
       <label className="flex min-h-10 items-center gap-3 text-sm"><input type="checkbox" className="size-5" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />Show hidden services</label>
 
       {data?.categories.map((c) => {
-        const items = data.services.filter((s) => s.category_id === c.id && (showHidden || s.active) && (!term || s.name.toLowerCase().includes(term)))
+        const items = data.services.filter((s) => s.category_id === c.id && (showHidden || s.active) && matches.has(s.id))
         if (!items.length) return null
         return (
           <section key={c.id} className="space-y-2">

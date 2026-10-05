@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { rpc, useProducts, useStock } from '../lib/api'
 import { rupees, toPaise } from '../lib/format'
+import { fuzzyFilter } from '../lib/search'
 import type { Product } from '../lib/types'
 import { Button, inputCls, Sheet } from './ui'
 
@@ -35,10 +36,10 @@ export default function AddProduct({ open, onClose, visitId, branchId, isPrime }
     onError: (e: Error) => setError(e.message),
   })
 
-  const list = (products.data ?? []).filter((p) => p.active && (!q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase())))
+  const list = fuzzyFilter((products.data ?? []).filter((p) => p.active), q, (p) => [p.name, p.sku ?? ''])
 
   return (
-    <Sheet open={open} onClose={close} title={picked ? picked.name : 'Add product'}>
+    <Sheet open={open} onClose={close} title={picked ? picked.name : 'Add product'} full={!picked}>
       {picked ? (
         <div className="space-y-4">
           <button className="text-sm text-violet-700" onClick={() => setPicked(null)}>‹ All products</button>
@@ -68,7 +69,7 @@ export default function AddProduct({ open, onClose, visitId, branchId, isPrime }
         </div>
       ) : (
         <div className="space-y-3">
-          <input className={inputCls} placeholder="Search products" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className={inputCls} placeholder="Search products" autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} />
           {list.length === 0 && <p className="text-sm text-gray-500">No products found.</p>}
           {list.map((p) => (
             <button key={p.id} className="flex min-h-12 w-full items-center justify-between gap-2 border-b py-2 text-left"
