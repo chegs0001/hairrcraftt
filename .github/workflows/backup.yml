@@ -6,14 +6,29 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
-      - name: Install Postgres client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Check the secret is set
+        id: check
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning title=Backup skipped::Add the SUPABASE_DB_URL repository secret (Supabase > Connect > Session pooler). No backup was taken."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install Postgres 17 client (Supabase runs a newer Postgres than Ubuntu ships)
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
       - name: Dump database
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges -Fc -f backup.dump
+        if: steps.check.outputs.skip != 'true'
+        run: /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges -Fc -f backup.dump
       - name: Upload as artifact (keep 30 days)
+        if: steps.check.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: hairrcraftt-backup-${{ github.run_id }}
