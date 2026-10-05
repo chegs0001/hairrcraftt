@@ -7,7 +7,8 @@ interface AuthState {
   loading: boolean
   session: Session | null
   staff: Staff | null
-  isManager: boolean
+  isManager: boolean   // manager or admin
+  isAdmin: boolean
   signIn: () => Promise<void>
   signOut: () => Promise<void>
   refresh: () => Promise<void>
@@ -50,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     staff,
     isManager: staff?.role === 'manager' && staff.status === 'active',
+    isAdmin: !!staff?.is_admin && staff.status === 'active',
     signIn: async () => {
       await supabase.auth.signInWithOAuth({
         provider: 'google',

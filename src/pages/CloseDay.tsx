@@ -13,7 +13,7 @@ interface Summary {
 
 export default function CloseDay() {
   const qc = useQueryClient()
-  const { staff, isManager } = useAuth()
+  const { staff, isManager, isAdmin } = useAuth()
   const branches = useBranches()
   const [branch, setBranch] = useState(staff?.branch_id ?? '')
   const [countedIn, setCountedIn] = useState('')
@@ -78,7 +78,7 @@ export default function CloseDay() {
             <div className="flex justify-between text-gray-600"><span>Expected GPay today</span><span>{rupees(s.upi_expected)}</span></div>
           </Card>
 
-          {isManager && !s.closed && (
+          {isAdmin && !s.closed && (
             <Card className="space-y-2">
               <div className="font-semibold">Owner cash</div>
               <div className="flex gap-2">

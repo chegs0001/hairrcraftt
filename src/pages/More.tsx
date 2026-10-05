@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth'
 import { Card, GhostButton, Screen } from '../components/ui'
 
 export default function More() {
-  const { isManager, signOut } = useAuth()
+  const { isManager, isAdmin, signOut } = useAuth()
   const link = 'block min-h-12 py-3 text-violet-700'
   return (
     <Screen title="More">
@@ -19,7 +19,6 @@ export default function More() {
         <Card>
           <div className="font-semibold">Manager</div>
           <Link className={link} to="/dashboard">Dashboard</Link>
-          <Link className={link} to="/payroll">Payroll</Link>
           <Link className={link} to="/flags">Flags</Link>
           <Link className={link} to="/reports">Reports</Link>
           <Link className={link} to="/attendance">Attendance (all staff)</Link>
@@ -28,6 +27,12 @@ export default function More() {
           <Link className={link} to="/stock">Stock</Link>
           <Link className={link} to="/bills">Bills (void)</Link>
           <Link className={link} to="/staff">Staff</Link>
+        </Card>
+      )}
+      {isAdmin && (
+        <Card>
+          <div className="font-semibold">Admin</div>
+          <Link className={link} to="/payroll">Payroll</Link>
           <Link className={link} to="/salons">Salons</Link>
           <Link className={link} to="/settings">Settings</Link>
         </Card>

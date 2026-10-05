@@ -10,12 +10,12 @@ type Full = PayrollLine & { payroll_runs: { month: string; branches: { name: str
 
 export default function Payslip() {
   const { id } = useParams()
-  const { isManager } = useAuth()
+  const { isAdmin } = useAuth()
   const { data: l } = useQuery({
     queryKey: ['payslip', id],
     queryFn: async () => (await supabase.from('payroll_lines').select('*,staff:staff_id(name),payroll_runs(month,branches:branch_id(name))').eq('id', id!).single()).data as unknown as Full,
   })
-  if (!l) return <Screen title="Payslip" back={<BackLink to={isManager ? '/payroll' : '/payslips'} />}>{null}</Screen>
+  if (!l) return <Screen title="Payslip" back={<BackLink to={isAdmin ? '/payroll' : '/payslips'} />}>{null}</Screen>
 
   const month = l.payroll_runs ? new Date(l.payroll_runs.month).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : ''
   const rows: [string, string][] = [
@@ -61,7 +61,7 @@ export default function Payslip() {
   }
 
   return (
-    <Screen title={`Payslip · ${month}`} back={<BackLink to={isManager ? '/payroll' : '/payslips'} />}>
+    <Screen title={`Payslip · ${month}`} back={<BackLink to={isAdmin ? '/payroll' : '/payslips'} />}>
       <Card className="space-y-1">
         <div className="font-semibold">{l.staff?.name}</div>
         <div className="text-sm text-gray-500">{l.payroll_runs?.branches?.name}</div>

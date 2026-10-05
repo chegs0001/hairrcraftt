@@ -3,12 +3,23 @@
 See `HairrCraftt Salon Manager — PRD.md`. Price list source: `services.json` (imported in phase 2).
 
 ## Setup (phase 1)
-1. Create a Supabase project. In the SQL editor run, in order, `supabase/migrations/0001_foundation.sql`, `0002_clients_billing.sql`, `0003_seed_services.sql`, `0004_cash.sql`, `0005_hardening.sql`, `0006_birthday_discount.sql`, `0007_attendance.sql`, `0008_dashboard.sql`, `0009_payroll.sql`, `0010_exit_and_makeup.sql`, `0011_stock_and_void.sql`. (0007 also creates the private `selfies` bucket and, if pg_cron is on, the 23:45 auto-close job.) (0004 also creates the private `receipts` storage bucket and, if pg_cron is enabled, the 23:00 unclosed-day job.)
+1. Create a Supabase project. In the SQL editor run, in order, `supabase/migrations/0001_foundation.sql`, `0002_clients_billing.sql`, `0003_seed_services.sql`, `0004_cash.sql`, `0005_hardening.sql`, `0006_birthday_discount.sql`, `0007_attendance.sql`, `0008_dashboard.sql`, `0009_payroll.sql`, `0010_exit_and_makeup.sql`, `0011_stock_and_void.sql`, `0012_roles.sql`. (0007 also creates the private `selfies` bucket and, if pg_cron is on, the 23:45 auto-close job.) (0004 also creates the private `receipts` storage bucket and, if pg_cron is enabled, the 23:00 unclosed-day job.)
 2. Auth → Providers → enable Google. Add your site URL (and `http://localhost:5173`) to Auth → URL configuration.
 3. `cp .env.example .env` and fill `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 4. `npm install && npm run dev`. Sign in as cheragverma0001@gmail.com: that email is auto-approved as the first manager.
 5. Deploy: Cloudflare Pages, build command `npm run build`, output `dist`, set the two env vars.
 6. Backups: add repo secret `SUPABASE_DB_URL` (the Postgres connection string) for `.github/workflows/backup.yml`.
+
+## Roles
+| | Staff | Manager | Admin |
+| --- | --- | --- | --- |
+| Visits, billing, expenses, own advance, close day, own attendance and payslips | yes | yes | yes |
+| Dashboard, flags, reports, attendance corrections, stock, products, services and prices, bills (void), reopen day, client dues and Prime | no | yes | yes |
+| Approve new staff, set shifts, salon and weekly off | no | yes | yes |
+| Salaries, payroll, exit settlements, roles, deactivate staff, joining and last working dates | no | no | yes |
+| Settings, salon setup, audit log, owner cash taken or added | no | no | yes |
+
+Admin is stored as `staff.is_admin` on top of role `manager`, so existing manager checks keep working. Rules are enforced in Postgres (functions, row level security and a trigger on `staff`), not just in the app. The owner email in `0001`/`0012` becomes Admin on first sign-in. Signed-out users and internal helpers cannot call any function.
 
 ## Scheduled jobs
 - Nightly DB backup: `.github/workflows/backup.yml` needs secret `SUPABASE_DB_URL`.

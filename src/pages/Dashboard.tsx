@@ -18,7 +18,7 @@ interface Today {
 interface Month {
   month: string; days_elapsed: number; days_in_month: number
   branches: { branch_id: string; code: string; name: string; net_sales: number; gate: number; projected: number
-    staff: { staff_id: string; name: string; salary: number; credit: number; target: number; incentive: number; present: number; absent: number; half: number; short: number }[] }[]
+    staff: { staff_id: string; name: string; salary: number | null; credit: number; target: number | null; incentive: number | null; present: number; absent: number; half: number; short: number }[] }[]
   daily: { date: string; amount: number }[]
   categories: { category: string; amount: number }[]
   top_services: { name: string; count: number; amount: number }[]
@@ -143,9 +143,9 @@ export default function Dashboard() {
               </div>
               {b.staff.map((s) => (
                 <div key={s.staff_id} className="space-y-1 border-t pt-2 text-sm">
-                  <div className="flex justify-between"><span className="font-medium">{s.name}</span><span>Incentive now {rupees(s.incentive)}</span></div>
-                  <Progress value={s.credit} max={Math.max(s.target, s.credit)} />
-                  <div className="flex justify-between text-xs text-gray-500"><span>Credit {rupees(s.credit)} of {rupees(s.target)} target</span><span>P {s.present} · A {s.absent} · ½ {s.half} · short {s.short}</span></div>
+                  <div className="flex justify-between"><span className="font-medium">{s.name}</span>{s.incentive !== null ? <span>Incentive now {rupees(s.incentive)}</span> : <span>Credit {rupees(s.credit)}</span>}</div>
+                  {s.target !== null && <Progress value={s.credit} max={Math.max(s.target, s.credit)} />}
+                  <div className="flex justify-between text-xs text-gray-500"><span>{s.target !== null ? `Credit ${rupees(s.credit)} of ${rupees(s.target)} target` : 'Attendance this month'}</span><span>P {s.present} · A {s.absent} · ½ {s.half} · short {s.short}</span></div>
                 </div>
               ))}
             </Card>

@@ -28,11 +28,12 @@ before(async () => {
     create table auth.users (id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}');
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
     create role anon;
+    create role service_role;
     create role authenticated;
     grant usage on schema public, auth to authenticated;
   `)
   for (const f of readdirSync('supabase/migrations').sort()) await db.exec(readFileSync(`supabase/migrations/${f}`, 'utf8'))
-  await db.exec(`grant all on all tables in schema public to authenticated; grant all on all functions in schema public to authenticated;`)
+  await db.exec(`grant all on all tables in schema public to authenticated;`)
 
   await signup('mgr', 'cheragverma0001@gmail.com')
   await signup('riya', 'riya@gmail.com')
@@ -391,6 +392,8 @@ describe('attendance', () => {
     offDate = (await sql(`select to_char(date '2026-09-07','YYYY-MM-DD') d`))[0].d   // a Monday
     workDate = '2026-09-08'
     await sql(`insert into staff_terms(staff_id,monthly_salary,weekly_off_day,effective_from) values ($1,1200000,1,'2026-01-01')`, [ids.s_riya])
+    // from today on, Riya's off day is never today's weekday, so the live check-in tests do not depend on the day they run
+    await sql(`insert into staff_terms(staff_id,monthly_salary,weekly_off_day,effective_from) values ($1,1200000,(extract(dow from business_date())::int + 3) % 7, business_date())`, [ids.s_riya])
     await signup('dee', 'dee@gmail.com')
     await db.query(`update staff set status='active', branch_id=$1, name='Dee', joined_on=business_date()-30 where email='dee@gmail.com'`, [ids.HC1])
     ids.s_dee = (await sql(`select id from staff where email='dee@gmail.com'`))[0].id
@@ -795,5 +798,140 @@ describe('products, stock and voiding bills', () => {
     const before = (await sql(`select dashboard_today($1,null) j`, [ids.HC1]))[0].j
     assert.ok(Number(before.products) > 0)
     assert.ok(Number(before.net_sales) >= Number(before.products))
+  })
+})
+
+describe('roles: admin > manager > staff', () => {
+  let hc4month
+  before(async () => {
+    await as(null)
+    await signup('max', 'max@gmail.com')
+    await db.query(`update staff set status='active', role='manager', branch_id=$1, name='Max' where email='max@gmail.com'`, [ids.HC1])
+    ids.s_max = (await sql(`select id from staff where email='max@gmail.com'`))[0].id
+    ids.s_mgr = (await sql(`select id from staff where email='cheragverma0001@gmail.com'`))[0].id
+    hc4month = (await sql(`select to_char(date_trunc('month', business_date()),'YYYY-MM-DD') m`))[0].m
+  })
+
+  test('the owner email is the Admin; a promoted person is a manager, not an admin', async () => {
+    await as(null)
+    assert.equal((await sql(`select is_admin from staff where id=$1`, [ids.s_mgr]))[0].is_admin, true)
+    assert.equal((await sql(`select is_admin from staff where id=$1`, [ids.s_max]))[0].is_admin, false)
+    await fails(() => sql(`update staff set is_admin = true where id=$1`, [ids.s_riya]), /staff_admin_is_manager|check/)   // admin must be a manager
+  })
+
+  test('manager cannot run payroll, settle exits, mark paid or see salaries', async () => {
+    await as('max')
+    await fails(() => sql(`select * from run_payroll($1,$2)`, [ids.HC1, hc4month]), /Admins only/)
+    await fails(() => sql(`select * from settle_exit($1,null)`, [ids.s_riya]), /Admins only/)
+    await fails(() => sql(`select * from finalize_payroll(gen_random_uuid())`), /Admins only/)
+    await fails(() => sql(`select * from mark_payslip_paid(gen_random_uuid(),'cash')`), /Admins only/)
+    assert.equal((await sql(`select count(*)::int c from staff_terms`))[0].c, 0)
+    assert.equal((await sql(`select count(*)::int c from payroll_lines`))[0].c, 0)
+    assert.equal((await sql(`select count(*)::int c from payroll_runs`))[0].c, 0)
+    await fails(() => sql(`select salary_on($1, business_date())`, [ids.s_riya]), /permission denied/)
+    await fails(() => sql(`select payroll_calc_line(gen_random_uuid(), $1, business_date(), business_date(), false)`, [ids.s_riya]), /permission denied/)
+  })
+
+  test('admin runs payroll and sees salaries', async () => {
+    await as('mgr')
+    const r = (await sql(`select * from run_payroll($1,$2)`, [ids.HC1, hc4month]))[0]
+    assert.equal(r.status, 'draft')
+    assert.ok((await sql(`select count(*)::int c from staff_terms`))[0].c > 0)
+  })
+
+  test('manager sees the dashboard but not salary, target or incentive figures; admin sees them', async () => {
+    await as('max')
+    const m = (await sql(`select dashboard_month($1, null) j`, [(await sql(`select id from branches where code='HC4'`))[0].id]))[0].j
+    const st = m.branches[0].staff[0]
+    assert.equal(st.salary, null)
+    assert.equal(st.target, null)
+    assert.equal(st.incentive, null)
+    assert.ok(Number(st.credit) >= 0)                                     // performance numbers stay visible
+    await as('mgr')
+    const a = (await sql(`select dashboard_month($1, null) j`, [(await sql(`select id from branches where code='HC4'`))[0].id]))[0].j
+    assert.notEqual(a.branches[0].staff[0].salary, null)
+  })
+
+  test('manager cannot change settings, salon setup, read the audit log or owner cash; admin can', async () => {
+    await as('max')
+    assert.equal((await sql(`update settings set value='1' where key='incentive_rate_pct' returning key`)).length, 0)
+    assert.equal((await sql(`update branches set name='Hacked' returning id`)).length, 0)
+    assert.equal((await sql(`select count(*)::int c from audit_log`))[0].c, 0)
+    assert.equal((await sql(`select count(*)::int c from cash_movements`))[0].c, 0)
+    await fails(() => sql(`select add_cash_movement('owner_withdrawal', 100, 'x', $1)`, [ids.HC1]), /Admins only/)
+    await fails(() => sql(`select * from report('audit', null, null, null)`), /Admins only/)
+    await as('mgr')
+    assert.equal((await sql(`update settings set value='5' where key='incentive_rate_pct' returning key`)).length, 1)
+    assert.ok((await sql(`select count(*)::int c from audit_log`))[0].c > 0)
+    assert.ok(Array.isArray(await sql(`select * from report('audit', business_date()-1, business_date(), null)`)))
+  })
+
+  test('manager still has the day-to-day powers: void a bill, reopen a day, adjust a due, correct attendance, manage stock', async () => {
+    await as(null)
+    const prod = (await sql(`insert into products(name,selling_price) values ('RoleProd',1000) returning id`))[0].id
+    await as('riya')
+    const c = (await sql(`insert into clients(phone,name) values ('1010101010','Roles') returning id`))[0]
+    const v = await newVisit('riya', c.id)
+    await addDone(v.id, ids.svc250)
+    const b = await bill(v.id, 25000n, 0n)
+    await as('max')
+    assert.equal((await sql(`select status from void_bill($1,'Manager voided')`, [b.id]))[0].status, 'void')
+    await sql(`select adjust_due($1, 100, 'Small write-off')`, [c.id])
+    assert.equal((await sql(`select status from correct_attendance($1, business_date()-4, '11:00','20:00','Manager fix')`, [ids.s_riya]))[0].status, 'present')
+    await sql(`select add_stock($1,$2,3,'purchase',null)`, [ids.HC1, prod])
+    // close a day as admin, then reopen it as a manager
+    await as('mgr')
+    const sm = (await sql(`select * from day_summary($1,null)`, [ids.HC2]))[0]
+    await sql(`select close_day($1, null, null, $2, null)`, [sm.expected, ids.HC2])
+    await as('max')
+    assert.equal((await sql(`select status from reopen_day($1, business_date(), 'Manager reopened')`, [ids.HC2]))[0].status, 'reopened')
+  })
+
+  test('manager sets the weekly off through the safe function, without touching the salary', async () => {
+    await as('max')
+    const before = (await sql(`select * from staff_schedule() where staff_id=$1`, [ids.s_riya]))[0]
+    const day = (Number(before.weekly_off_day) + 1) % 7
+    await sql(`select set_weekly_off($1,$2)`, [ids.s_riya, day])
+    assert.equal(Number((await sql(`select weekly_off_day from staff_schedule() where staff_id=$1`, [ids.s_riya]))[0].weekly_off_day), day)
+    await as('mgr')
+    assert.equal(Number((await sql(`select monthly_salary from staff_terms where staff_id=$1 order by effective_from desc limit 1`, [ids.s_riya]))[0].monthly_salary), 1200000)  // salary carried over unchanged
+    await as('riya')
+    await fails(() => sql(`select set_weekly_off($1,2)`, [ids.s_riya]), /Managers only/)
+  })
+
+  test('manager can approve a new person, but only an admin changes roles, deactivates or sets dates', async () => {
+    await as(null)
+    await signup('newb', 'newb@gmail.com')                               // arrives as pending staff
+    await as('max')
+    await sql(`update staff set status='active', branch_id=$1, name='Newb', shift_start='10:00' where email='newb@gmail.com'`, [ids.HC1])   // approve + schedule
+    await fails(() => sql(`update staff set role='manager' where email='newb@gmail.com'`), /Only an admin can change roles/)
+    await fails(() => sql(`update staff set status='inactive' where email='newb@gmail.com'`), /Only an admin can deactivate/)
+    await fails(() => sql(`update staff set last_working_on=business_date() where email='newb@gmail.com'`), /Only an admin/)
+    await fails(() => sql(`update staff set is_admin=true where id=$1`, [ids.s_max]), /Only an admin can change roles/)
+    await fails(() => sql(`update staff set name='x' where id=$1`, [ids.s_mgr]), /Only an admin can change an admin/)
+    await fails(() => sql(`insert into staff(email, role, status) values ('boss@gmail.com','manager','active')`), /Only an admin can create managers/)
+    await sql(`insert into staff(email, role, status, branch_id) values ('pre@gmail.com','member','active',$1)`, [ids.HC1])   // pre-adding a plain staff member is fine
+    await as('mgr')
+    await sql(`update staff set role='manager' where email='newb@gmail.com'`)             // admin promotes
+    await sql(`update staff set status='inactive' where email='newb@gmail.com'`)          // admin deactivates
+    assert.equal((await sql(`select status from staff where email='newb@gmail.com'`))[0].status, 'inactive')
+  })
+
+  test('staff have none of it', async () => {
+    await as('riya')
+    await fails(() => sql(`select * from run_payroll($1,$2)`, [ids.HC1, hc4month]), /Admins only/)
+    await fails(() => sql(`select dashboard_today(null,null)`), /Managers only/)
+    assert.equal((await sql(`select count(*)::int c from staff_schedule()`))[0].c, 0)
+    assert.equal((await sql(`select count(*)::int c from staff_terms where staff_id <> $1`, [ids.s_riya]))[0].c, 0)
+    assert.equal((await sql(`update staff set role='manager' where id=$1 returning id`, [ids.s_riya])).length, 0)   // no write policy for staff
+  })
+
+  test('signed-out callers cannot run any function', async () => {
+    await db.exec('reset role')
+    await db.exec(`select set_config('request.jwt.claim.sub','',false)`)
+    await db.exec('set role anon')
+    await fails(() => sql(`select client_balance(gen_random_uuid())`), /permission denied/)
+    await fails(() => sql(`select * from stock_levels(null)`), /permission denied/)
+    await db.exec('reset role')
   })
 })

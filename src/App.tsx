@@ -37,6 +37,11 @@ function ManagerOnly({ children }: { children: ReactNode }) {
   return isManager ? children : <Navigate to="/" replace />
 }
 
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { isAdmin } = useAuth()
+  return isAdmin ? children : <Navigate to="/" replace />
+}
+
 export default function App() {
   const { loading, session, staff } = useAuth()
   if (window.location.pathname === '/privacy') return <Privacy />
@@ -61,7 +66,7 @@ export default function App() {
       <Route path="/dashboard" element={<ManagerOnly><Dashboard /></ManagerOnly>} />
       <Route path="/flags" element={<ManagerOnly><Flags /></ManagerOnly>} />
       <Route path="/reports" element={<ManagerOnly><Reports /></ManagerOnly>} />
-      <Route path="/payroll" element={<ManagerOnly><Payroll /></ManagerOnly>} />
+      <Route path="/payroll" element={<AdminOnly><Payroll /></AdminOnly>} />
       <Route path="/payslips" element={<Payslips />} />
       <Route path="/payslip/:id" element={<Payslip />} />
       <Route path="/products" element={<ManagerOnly><Products /></ManagerOnly>} />
@@ -70,8 +75,8 @@ export default function App() {
       <Route path="/more" element={<More />} />
       <Route path="/services" element={<ManagerOnly><ServicesAdmin /></ManagerOnly>} />
       <Route path="/staff" element={<ManagerOnly><StaffPage /></ManagerOnly>} />
-      <Route path="/salons" element={<ManagerOnly><Salons /></ManagerOnly>} />
-      <Route path="/settings" element={<ManagerOnly><Settings /></ManagerOnly>} />
+      <Route path="/salons" element={<AdminOnly><Salons /></AdminOnly>} />
+      <Route path="/settings" element={<AdminOnly><Settings /></AdminOnly>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Layout>

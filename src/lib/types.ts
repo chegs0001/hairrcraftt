@@ -18,6 +18,7 @@ export interface Staff {
   name: string
   phone: string | null
   role: Role
+  is_admin: boolean
   branch_id: string | null
   status: StaffStatus
   shift_start: string

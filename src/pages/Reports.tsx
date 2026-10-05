@@ -3,6 +3,7 @@ import { useState } from 'react'
 import SalonTabs from '../components/SalonTabs'
 import { BackLink, Button, inputCls, Screen } from '../components/ui'
 import { rpc } from '../lib/api'
+import { useAuth } from '../lib/auth'
 import { downloadCsv } from '../lib/csv'
 import { whatsappLink } from '../lib/receipt'
 
@@ -13,6 +14,7 @@ const REPORTS: [string, string][] = [
 const iso = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
 
 export default function Reports() {
+  const { isAdmin } = useAuth()
   const [name, setName] = useState('sales')
   const [branch, setBranch] = useState('')
   const [from, setFrom] = useState(iso(new Date(Date.now() - 30 * 86_400_000)))
@@ -29,7 +31,7 @@ export default function Reports() {
   return (
     <Screen title="Reports" back={<BackLink to="/dashboard" />}>
       <select className={inputCls} value={name} onChange={(e) => setName(e.target.value)}>
-        {REPORTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        {REPORTS.filter(([k]) => isAdmin || k !== 'audit').map(([k, l]) => <option key={k} value={k}>{l}</option>)}
       </select>
       <SalonTabs value={branch} onChange={setBranch} />
       {!['dues', 'prime'].includes(name) && (
