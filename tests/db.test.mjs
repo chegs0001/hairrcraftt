@@ -935,3 +935,18 @@ describe('roles: admin > manager > staff', () => {
     await db.exec('reset role')
   })
 })
+
+describe('catalogue editing', () => {
+  test('a manager can add categories and services; staff cannot; duplicate category names per gender are refused', async () => {
+    await as('max')
+    const cat = (await sql(`insert into service_categories(name, gender, sort) values ('Hair Treatment','both',99) returning id`))[0]
+    const svc = (await sql(`insert into services(category_id,name,gender,standard_price,prime_price) values ($1,'Scalp Detox','both',120000,108000) returning id`, [cat.id]))[0]
+    assert.ok(svc.id)
+    await sql(`update services set standard_price = 130000 where id=$1`, [svc.id])
+    await fails(() => sql(`insert into service_categories(name, gender, sort) values ('Hair Treatment','both',100)`), /unique|duplicate/)
+    await as('riya')
+    assert.equal((await sql(`select count(*)::int c from services where name='Scalp Detox'`))[0].c, 1)      // staff can read it
+    await fails(() => sql(`insert into services(category_id,name,gender) values ($1,'Sneaky','both')`, [cat.id]), /row-level security/)
+    assert.equal((await sql(`update services set standard_price = 1 returning id`)).length, 0)
+  })
+})

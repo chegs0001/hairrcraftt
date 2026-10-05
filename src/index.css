@@ -13,6 +13,7 @@
     font-variant-numeric: tabular-nums;
   }
   button { touch-action: manipulation; }
+  input[type='checkbox'], input[type='radio'] { accent-color: var(--color-violet-600); }
   input, select, textarea { font: inherit; }
 
   /* one focus style in the brand colour */
