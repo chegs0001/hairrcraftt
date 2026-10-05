@@ -55,7 +55,7 @@ export default function Payroll() {
       {(leaving.data ?? []).filter((s) => !settledIds.has(s.id)).map((s) => (
         <Card key={s.id} className="flex items-center justify-between gap-2 border-amber-300">
           <div className="min-w-0"><div className="font-medium">{s.name || s.email}</div><div className="text-xs text-gray-500">Last working day {shortDate(s.last_working_on!)}</div></div>
-          <GhostButton disabled={settle.isPending} onClick={() => settle.mutate(s.id)}>Settle remaining pay</GhostButton>
+          <GhostButton className="shrink-0" disabled={settle.isPending} onClick={() => settle.mutate(s.id)}>Settle pay</GhostButton>
         </Card>
       ))}
 

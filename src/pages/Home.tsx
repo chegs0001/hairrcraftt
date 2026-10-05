@@ -7,31 +7,42 @@ import { useBranches } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 
+const greeting = () => {
+  const h = Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }))
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
+}
+
 export default function Home() {
   const { staff, isManager } = useAuth()
+  const salon = useBranches().data?.find((b) => b.id === staff?.branch_id)
   const flags = useQuery({
     queryKey: ['flag-count'], enabled: isManager,
     queryFn: async () => (await supabase.from('flags').select('id', { count: 'exact', head: true }).is('seen_at', null)).count ?? 0,
   })
-  const salon = useBranches().data?.find((b) => b.id === staff?.branch_id)
   const open = useQuery({
     queryKey: ['open-visit-count'],
     queryFn: async () => (await supabase.from('visits').select('id', { count: 'exact', head: true }).eq('status', 'open')).count ?? 0,
   })
+  const first = (staff?.name || staff?.email || '').split(' ')[0]
   return (
-    <Screen title="Home">
-      <Card>
-        <div className="text-sm text-gray-500">Signed in as</div>
-        <div className="text-lg font-semibold">{staff?.name || staff?.email}</div>
-        {salon && <div className="mt-1 inline-block rounded-md bg-violet-100 px-2 py-0.5 text-sm font-medium text-violet-800">{salon.code} · {salon.name}</div>}
-      </Card>
+    <Screen title="HairrCraftt">
+      <div className="flex items-center gap-3 px-1">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-violet-100 text-lg font-bold text-violet-700">{first.charAt(0).toUpperCase()}</div>
+        <div className="min-w-0">
+          <div className="truncate text-lg font-semibold leading-tight">{greeting()}, {first}</div>
+          {salon && <div className="text-sm text-gray-500">{salon.code} · {salon.name}</div>}
+        </div>
+      </div>
       <InstallPrompt />
       <CheckInCard />
-      {isManager && (
-        <Link to="/dashboard"><Card className="flex items-center justify-between"><span className="font-semibold">Dashboard</span><span className="text-sm text-gray-600">{flags.data ? <b className="text-red-600">{flags.data} new flags</b> : 'all clear'}</span></Card></Link>
-      )}
-      <Link to="/visit/new" className="flex min-h-16 w-full items-center justify-center rounded-2xl bg-violet-600 text-lg font-bold text-white">New visit</Link>
-      <Link to="/visits"><Card className="flex items-center justify-between"><span>Open visits</span><span className="text-xl font-bold">{open.data ?? '…'}</span></Card></Link>
+      <Link to="/visit/new" className="flex min-h-16 w-full items-center justify-center rounded-2xl bg-violet-600 text-lg font-bold text-white shadow-sm active:bg-violet-700">+ New visit</Link>
+      <div className="grid grid-cols-2 gap-3">
+        <Link to="/visits" className="block"><Card className="h-full"><div className="text-sm text-gray-500">Open visits</div><div className="text-3xl font-bold">{open.data ?? '…'}</div></Card></Link>
+        {isManager && (
+          <Link to="/dashboard" className="block"><Card className="h-full"><div className="text-sm text-gray-500">Dashboard</div>
+            <div className={`text-lg font-bold ${flags.data ? 'text-red-600' : 'text-green-700'}`}>{flags.data ? `${flags.data} new flag${flags.data > 1 ? 's' : ''}` : 'All clear'}</div></Card></Link>
+        )}
+      </div>
     </Screen>
   )
 }

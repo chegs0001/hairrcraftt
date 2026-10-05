@@ -1,4 +1,49 @@
 @import 'tailwindcss';
 
-html, body, #root { height: 100%; }
-body { background: #fff; color: #111827; -webkit-tap-highlight-color: transparent; }
+@layer base {
+  /* Tailwind v4 borders default to currentColor (black); keep every border a soft grey unless a class says otherwise */
+  *, ::after, ::before, ::backdrop, ::file-selector-button { border-color: var(--color-gray-200); }
+
+  html, body, #root { height: 100%; }
+  body {
+    background: #fff;
+    color: var(--color-gray-900);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  button { touch-action: manipulation; }
+  input, select, textarea { font: inherit; }
+
+  /* one focus style in the brand colour */
+  :where(input, select, textarea):focus {
+    outline: none;
+    border-color: var(--color-violet-500);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-violet-500) 18%, transparent);
+  }
+  :where(button, a):focus-visible { outline: 2px solid var(--color-violet-500); outline-offset: 2px; }
+
+  /* consistent dropdowns: native arrow replaced so long text never runs under it */
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 8 5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+    background-size: 1.15rem;
+    padding-right: 2.5rem !important;
+    text-overflow: ellipsis;
+  }
+  select:disabled { background-color: var(--color-gray-50); color: var(--color-gray-500); }
+
+  /* labels wrap their field: same label style and gap everywhere */
+  label.block { font-weight: 500; color: var(--color-gray-700); }
+  label.block > :is(input, select, textarea) { margin-top: 0.375rem; font-weight: 400; color: var(--color-gray-900); }
+  label.block > span.text-xs { display: block; margin-top: 0.375rem; font-weight: 400; }
+
+  input[type='date'], input[type='time'], input[type='month'] { display: block; min-width: 0; text-align: left; }
+  input[type='file'] { padding: 0.5rem 0.75rem; font-size: 0.875rem; color: var(--color-gray-600); }
+  input[type='file']::file-selector-button {
+    margin-right: 0.75rem; border: 0; border-radius: 0.6rem; padding: 0.55rem 0.9rem;
+    background: var(--color-violet-100); color: var(--color-violet-800); font-weight: 600;
+  }
+}

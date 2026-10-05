@@ -7,7 +7,7 @@ import { Card } from './ui'
 const daysUntil = (d: string) =>
   Math.ceil((new Date(d + 'T00:00:00+05:30').getTime() - Date.now()) / 86_400_000)
 
-export default function ClientCard({ client, link }: { client: Client; link?: boolean }) {
+export default function ClientCard({ client, link, compact }: { client: Client; link?: boolean; compact?: boolean }) {
   const { data } = useClientCard(client)
   const bdayPct = useBirthdayPct().data ?? 20
   const prime = data?.card?.prime_until
@@ -34,7 +34,7 @@ export default function ClientCard({ client, link }: { client: Client; link?: bo
         {balance > 0 && <span className="rounded-full bg-red-100 px-3 py-1 font-medium text-red-700">Due {rupees(balance)}</span>}
         {balance < 0 && <span className="rounded-full bg-green-100 px-3 py-1 font-medium text-green-700">Credit {rupees(-balance)}</span>}
       </div>
-      {data && data.history.length > 0 && (
+      {!compact && data && data.history.length > 0 && (
         <div className="text-sm text-gray-600">
           <div className="mb-1 text-gray-500">Last visit {shortDate(data.history[0].billed_on)}</div>
           {data.history.map((h, i) => (

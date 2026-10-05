@@ -60,17 +60,20 @@ export default function Stock() {
             <div className={`text-2xl font-bold ${r.qty < 0 ? 'text-red-600' : r.low ? 'text-amber-600' : ''}`}>{r.qty}</div>
           </div>
           <div className="flex gap-2">
-            <GhostButton className="min-h-10 flex-1 text-sm" onClick={() => open(r, 'purchase')}>+ Purchase</GhostButton>
-            <GhostButton className="min-h-10 flex-1 text-sm" onClick={() => open(r, 'adjustment')}>Adjust</GhostButton>
-            <GhostButton className="min-h-10 flex-1 text-sm" onClick={() => open(r, 'transfer')}>Transfer</GhostButton>
+            <GhostButton className="min-h-10 flex-1 whitespace-nowrap px-2 text-sm" onClick={() => open(r, 'purchase')}>+ Stock</GhostButton>
+            <GhostButton className="min-h-10 flex-1 whitespace-nowrap px-2 text-sm" onClick={() => open(r, 'adjustment')}>Adjust</GhostButton>
+            <GhostButton className="min-h-10 flex-1 whitespace-nowrap px-2 text-sm" onClick={() => open(r, 'transfer')}>Transfer</GhostButton>
           </div>
         </Card>
       ))}
       <h2 className="pt-2 font-semibold">Recent movements</h2>
       {moves.data?.map((m) => (
-        <div key={m.id} className="flex justify-between border-b py-2 text-sm">
-          <span>{shortDate(m.created_at)} · {m.products?.name} <span className="text-gray-400">{code(m.branch_id)} · {m.type.replace('_', ' ')}{m.note && ` · ${m.note}`}</span></span>
-          <span className={m.qty < 0 ? 'text-red-600' : 'text-green-700'}>{m.qty > 0 ? '+' : ''}{m.qty}</span>
+        <div key={m.id} className="flex items-start justify-between gap-3 border-b py-2.5 text-sm last:border-b-0">
+          <div className="min-w-0">
+            <div className="truncate font-medium">{m.products?.name}</div>
+            <div className="text-xs text-gray-500">{shortDate(m.created_at)} · {code(m.branch_id)} · {m.type.replace('_', ' ')}{m.note && ` · ${m.note}`}</div>
+          </div>
+          <span className={`shrink-0 font-semibold ${m.qty < 0 ? 'text-red-600' : 'text-green-700'}`}>{m.qty > 0 ? '+' : ''}{m.qty}</span>
         </div>
       ))}
 

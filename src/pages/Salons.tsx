@@ -1,11 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { Button, Card, inputCls, Screen } from '../components/ui'
+import { BackLink, Button, Card, inputCls, Screen } from '../components/ui'
 import { supabase } from '../lib/supabase'
 import type { Branch } from '../lib/types'
 import { useState } from 'react'
 
-const back = <Link to="/more" className="px-2 py-2 text-xl">‹</Link>
+const back = <BackLink to="/more" />
 
 export default function Salons() {
   const { data } = useQuery({

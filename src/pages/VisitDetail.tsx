@@ -59,7 +59,7 @@ export default function VisitDetail() {
 
   return (
     <Screen title={visit.clients.name} back={<BackLink to="/visits" />}>
-      <ClientCard client={visit.clients} link />
+      <ClientCard client={visit.clients} link compact />
       {!open && <p className="rounded-xl bg-gray-100 p-3 text-sm">This visit is {visit.status}.</p>}
 
       {[...groups.entries()].map(([sid, ls]) => (

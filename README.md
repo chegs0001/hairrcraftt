@@ -27,6 +27,8 @@ Admin is stored as `staff.is_admin` on top of role `manager`, so existing manage
 - In Supabase (pg_cron): unclosed-day flag 23:00, attendance auto-close 23:45, departed-staff deactivation 23:50 IST.
 
 ## Tests
+`node scripts/ui-shots.mjs [outDir]` runs the real app against fake data (no Supabase needed) and saves phone-sized screenshots of every screen, for checking UI changes. First time: `npx playwright install chromium`.
+
 `npm test` runs every migration in an in-memory Postgres (PGlite) and checks the PRD billing, prime, dues, split-credit and permission rules. No Supabase needed.
 
 `node scripts/gen-services-seed.mjs` regenerates `0003_seed_services.sql` from `services.json`.

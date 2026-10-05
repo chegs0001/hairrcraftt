@@ -81,7 +81,7 @@ export default function CloseDay() {
           {isAdmin && !s.closed && (
             <Card className="space-y-2">
               <div className="font-semibold">Owner cash</div>
-              <div className="flex gap-2">
+              <div className="grid gap-2">
                 <select className={inputCls} value={moveType} onChange={(e) => setMoveType(e.target.value as typeof moveType)}>
                   <option value="owner_withdrawal">Cash taken by owner</option><option value="float_added">Float added</option>
                 </select>

@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Button, inputCls, Screen } from '../components/ui'
+import { BackLink, Button, inputCls, Screen } from '../components/ui'
 import { supabase } from '../lib/supabase'
 
-const back = <Link to="/more" className="px-2 py-2 text-xl">‹</Link>
+const back = <BackLink to="/more" />
 
 // key → label, and whether the stored value is paise (shown/edited in rupees).
 const FIELDS: { key: string; label: string; paise?: boolean }[] = [

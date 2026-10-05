@@ -1,14 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { rpc } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { Button, Card, GhostButton, inputCls, Screen } from '../components/ui'
+import { BackButton, BackLink, Button, Card, GhostButton, inputCls, Screen } from '../components/ui'
 import { DAYS, toPaise } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import type { Branch, Staff, StaffTerms } from '../lib/types'
 
-const back = <Link to="/more" className="px-2 py-2 text-xl">‹</Link>
+const back = <BackLink to="/more" />
 
 export default function StaffPage() {
   const qc = useQueryClient()
@@ -179,7 +178,7 @@ function StaffForm({ staff, branches, terms, offDay: currentOff, isAdmin, onDone
   })
 
   return (
-    <Screen title={staff ? 'Edit staff' : 'Add staff'} back={<button className="px-2 py-2 text-xl" onClick={onDone}>‹</button>}>
+    <Screen title={staff ? 'Edit staff' : 'Add staff'} back={<BackButton onClick={onDone} />}>
       <label className="block text-sm">Gmail
         <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!!staff} />
       </label>
@@ -188,6 +187,12 @@ function StaffForm({ staff, branches, terms, offDay: currentOff, isAdmin, onDone
       </label>
       <label className="block text-sm">Phone
         <input className={inputCls} inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </label>
+      <label className="block text-sm">Home salon
+        <select className={inputCls} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <option value="" disabled>Choose salon…</option>
+          {branches.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}
+        </select>
       </label>
       {!branchId && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Choose which salon this person works in. They can only see and bill for that salon.</p>}
       <div className="grid grid-cols-2 gap-3">
@@ -198,10 +203,9 @@ function StaffForm({ staff, branches, terms, offDay: currentOff, isAdmin, onDone
             <option value="admin">Admin</option>
           </select>
         </label>
-        <label className="block text-sm">Home salon
-          <select className={inputCls} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-            <option value="" disabled>Choose salon…</option>
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}
+        <label className="block text-sm">Weekly off
+          <select className={inputCls} value={offDay} onChange={(e) => setOffDay(Number(e.target.value))}>
+            {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
           </select>
         </label>
         <label className="block text-sm">Shift start
@@ -210,17 +214,12 @@ function StaffForm({ staff, branches, terms, offDay: currentOff, isAdmin, onDone
         <label className="block text-sm">Shift end
           <input className={inputCls} type="time" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
         </label>
-        {isAdmin && (
-          <label className="block text-sm">Monthly salary (₹)
-            <input className={inputCls} inputMode="numeric" value={salary} onChange={(e) => setSalary(e.target.value.replace(/\D/g, ''))} />
-          </label>
-        )}
-        <label className="block text-sm">Weekly off
-          <select className={inputCls} value={offDay} onChange={(e) => setOffDay(Number(e.target.value))}>
-            {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
-          </select>
-        </label>
       </div>
+      {isAdmin && (
+        <label className="block text-sm">Monthly salary (₹)
+          <input className={inputCls} inputMode="numeric" value={salary} onChange={(e) => setSalary(e.target.value.replace(/\D/g, ''))} />
+        </label>
+      )}
       {isAdmin && (
         <>
       <label className="block text-sm">Joining date: pay starts from this day
